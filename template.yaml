@@ -155,6 +155,7 @@ Resources:
       Port: '80'
       Protocol: "HTTP"
       VpcId: !Ref VPC
+      TargetType: "ip"
     DependsOn: ElasticApplicationLoadBalancer
 
   LoadBalancerListener:
