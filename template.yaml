@@ -124,9 +124,17 @@ Resources:
         - ContainerName: CloudFormationContainerImageSampleWebApp
           ContainerPort: '80'
           TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref SecurityGroup
+          Subnets: 
+            - !Ref SubnetA
+            - !Ref SubnetB
+            - !Ref SubnetC    
       TaskDefinition: !Ref TaskDefinition      
       #Role: arn:aws:iam::715322001598:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
-    
+
   ElasticApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties: 
