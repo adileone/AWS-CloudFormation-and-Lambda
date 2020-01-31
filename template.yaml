@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AppLB+ECS+1service+3task -- prototype
+
+Resources:
+
+  #ServiceRole:
+  #  Type: AWS::IAM::Role
+  #  Properties:
+  #    AssumeRolePolicyDocument:
+  #      Version: 2012-10-17
+  #      Statement:
+  #        - Sid: ''
+  #          Effect: Allow
+  #          Principal:
+  #            Service: ecs.amazonaws.com
+  #          Action: 'sts:AssumeRole'
+  #    ManagedPolicyArns:
+  #      - 'arn:aws:iam::aws:policy/aws-service-role/AmazonECSServiceRolePolicy'
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'      
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "CloudFormationSecurityGroupSampleWebApp"
+      GroupDescription: "All traffic allowed"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '0'
+          ToPort: '65535'
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: '0'
+          ToPort: '65535'
+          CidrIp: 0.0.0.0/0
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 188.88.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway    
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-central-1a
+      VpcId: !Ref VPC
+      CidrBlock: 188.88.0.0/20
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-central-1b
+      VpcId: !Ref VPC
+      CidrBlock: 188.88.16.0/20
+  SubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-central-1c
+      VpcId: !Ref VPC
+      CidrBlock: 188.88.32.0/20      
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties: 
+      ClusterName: CloudFormationClusterSampleWebApp
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities:
+        - "FARGATE"
+      Cpu: '256'
+      Memory: '512'
+      TaskRoleArn: !Ref TaskRole
+      ExecutionRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: CloudFormationContainerImageSampleWebApp
+          Image: 715322001598.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest
+          PortMappings:
+          - ContainerPort: '80'
+            HostPort: '80'
+      NetworkMode: awsvpc      
+      Family: CloudFormationTaskDefinitionFamilySampleWebApp    
+        
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: LoadBalancerListener
+    Properties:
+      ServiceName: CloudFormationServiceSampleWebApp
+      Cluster: !Ref ECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 3
+      LoadBalancers:
+        - ContainerName: CloudFormationContainerImageSampleWebApp
+          ContainerPort: '80'
+          TargetGroupArn: !Ref TargetGroup
+      TaskDefinition: !Ref TaskDefinition      
+      #Role: arn:aws:iam::715322001598:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
+    
+  ElasticApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: CloudFormationSampleWebAppLB
+      Type: application
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Subnets: 
+        - !Ref SubnetA
+        - !Ref SubnetB
+        - !Ref SubnetC
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: CloudFormationSampleWebAppTG
+      HealthCheckPath: "/"
+      HealthCheckPort: '8080'
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount : 2        
+      Port: '80'
+      Protocol: "HTTP"
+      VpcId: !Ref VPC
+    DependsOn: ElasticApplicationLoadBalancer
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref ElasticApplicationLoadBalancer
+      Port: 80
+      Protocol: "HTTP"  
+
+Outputs:
+  LoadBalancer:
+    Description: A reference to the Application Load Balancer
+    Value: !Ref ElasticApplicationLoadBalancer
+  LoadBalancerUrl:
+    Description: The URL of the ALB
+    Value: !Sub 'http://${ElasticApplicationLoadBalancer.DNSName}'
+  Listener:
+    Description: A reference to a port 80 listener
+    Value: !Ref LoadBalancerListener
+  Cluster:
+    Value: CloudFormationClusterSampleWebApp
+  Service:
+    Value: CloudFormationServiceSampleWebApp
+  TaskDefinition:
+    Value: CloudFormationTaskDefinitionFamilySampleWebApp
+  ContainerImage:
+    Value: CloudFormationContainerImageSampleWebApp        
+  
+  
+  
+  
+  
