@@ -97,16 +97,16 @@ Resources:
     Properties:
       RequiresCompatibilities:
         - "FARGATE"
-      Cpu: '256'
-      Memory: '512'
+      Cpu: 256
+      Memory: 0.5GB
       TaskRoleArn: !Ref TaskRole
       ExecutionRoleArn: !Ref TaskRole
       ContainerDefinitions:
         - Name: CloudFormationContainerImageSampleWebApp
           Image: 715322001598.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest
           PortMappings:
-          - ContainerPort: '80'
-            HostPort: '80'
+          - ContainerPort: 80
+            HostPort: 80
       NetworkMode: awsvpc      
       Family: CloudFormationTaskDefinitionFamilySampleWebApp    
         
