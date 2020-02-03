@@ -115,6 +115,7 @@ Resources:
     DependsOn: LoadBalancerListener
     Properties:
       ServiceName: CloudFormationServiceSampleWebApp
+      LaunchType: FARGATE
       Cluster: !Ref ECSCluster
       DeploymentConfiguration:
         MaximumPercent: 200
