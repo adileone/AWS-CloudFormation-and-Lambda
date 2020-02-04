@@ -2,34 +2,35 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: AppLB+ECS+1service+3task -- prototype
 
 Resources:
-
-  #ServiceRole:
-  #  Type: AWS::IAM::Role
-  #  Properties:
-  #    AssumeRolePolicyDocument:
-  #      Version: 2012-10-17
-  #      Statement:
-  #        - Sid: ''
-  #          Effect: Allow
-  #          Principal:
-  #            Service: ecs.amazonaws.com
-  #          Action: 'sts:AssumeRole'
-  #    ManagedPolicyArns:
-  #      - 'arn:aws:iam::aws:policy/aws-service-role/AmazonECSServiceRolePolicy'
-
-  TaskRole:
+    
+  ECSTaskRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: 2012-10-17
         Statement:
-          - Sid: ''
-            Effect: Allow
-            Principal:
-              Service: ecs.amazonaws.com
-            Action: 'sts:AssumeRole'
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
       ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'      
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy' 
+      Policies:
+        - PolicyName: CustomECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+
+                # ECS Tasks to download images from ECR
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+                # ECS tasks to upload logs to CloudWatch
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'      
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -92,6 +93,12 @@ Resources:
         - Name: containerInsights
           Value: enabled
 
+  CloudWatchLogsGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/ecs/CFSampleWebApp
+        RetentionInDays: 7
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -99,16 +106,23 @@ Resources:
         - "FARGATE"
       Cpu: 256
       Memory: 0.5GB
-      TaskRoleArn: !Ref TaskRole
-      ExecutionRoleArn: !Ref TaskRole
+      TaskRoleArn: !Ref ECSTaskRole
+      ExecutionRoleArn: !Ref ECSTaskRole
+      NetworkMode: awsvpc      
+      Family: CloudFormationTaskDefinitionFamilySampleWebApp
       ContainerDefinitions:
         - Name: CloudFormationContainerImageSampleWebApp
           Image: 715322001598.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest
           PortMappings:
-          - ContainerPort: 80
-            HostPort: 80
-      NetworkMode: awsvpc      
-      Family: CloudFormationTaskDefinitionFamilySampleWebApp    
+          - ContainerPort: 8080
+            HostPort: 8080
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: aws-cloudformation      
+  
         
   Service:
     Type: AWS::ECS::Service
@@ -123,10 +137,11 @@ Resources:
       DesiredCount: 3
       LoadBalancers:
         - ContainerName: CloudFormationContainerImageSampleWebApp
-          ContainerPort: '80'
+          ContainerPort: 8080
           TargetGroupArn: !Ref TargetGroup
       NetworkConfiguration: 
         AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
           SecurityGroups:
             - !Ref SecurityGroup
           Subnets: 
@@ -134,7 +149,7 @@ Resources:
             - !Ref SubnetB
             - !Ref SubnetC    
       TaskDefinition: !Ref TaskDefinition      
-      #Role: arn:aws:iam::715322001598:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
+      #Role: !Ref ECSRole
 
   ElasticApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -155,13 +170,13 @@ Resources:
     Properties:
       Name: CloudFormationSampleWebAppTG
       HealthCheckPath: "/"
-      HealthCheckPort: '8080'
+      HealthCheckPort: 8080
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 3
       UnhealthyThresholdCount : 2        
-      Port: '80'
+      Port: 8080
       Protocol: "HTTP"
       VpcId: !Ref VPC
       TargetType: "ip"
@@ -174,7 +189,7 @@ Resources:
         - Type: "forward"
           TargetGroupArn: !Ref TargetGroup
       LoadBalancerArn: !Ref ElasticApplicationLoadBalancer
-      Port: 80
+      Port: 8080
       Protocol: "HTTP"  
 
 Outputs:
