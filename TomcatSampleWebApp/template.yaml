@@ -52,7 +52,7 @@ Resources:
   VPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: 188.88.0.0/16
+      CidrBlock: 10.1.0.0/16
       EnableDnsSupport: true
       EnableDnsHostnames: true
       InstanceTenancy: default
@@ -71,20 +71,49 @@ Resources:
     Properties:
       AvailabilityZone: eu-central-1a
       VpcId: !Ref VPC
-      CidrBlock: 188.88.0.0/20
+      CidrBlock: 10.1.20.0/24
   SubnetB:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-central-1b
       VpcId: !Ref VPC
-      CidrBlock: 188.88.16.0/20
+      CidrBlock: 10.1.50.0/24
   SubnetC:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-central-1c
       VpcId: !Ref VPC
-      CidrBlock: 188.88.32.0/20      
+      CidrBlock: 10.1.60.0/24
 
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+   
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetA
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetB
+      RouteTableId: !Ref PublicRouteTable
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetC
+      RouteTableId: !Ref PublicRouteTable
+  
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties: 
@@ -149,7 +178,6 @@ Resources:
             - !Ref SubnetB
             - !Ref SubnetC    
       TaskDefinition: !Ref TaskDefinition      
-      #Role: !Ref ECSRole
 
   ElasticApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
