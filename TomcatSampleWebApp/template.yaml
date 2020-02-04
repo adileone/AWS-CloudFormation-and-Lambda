@@ -1,6 +1,11 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: AppLB+ECS+1service+3task -- prototype
 
+Parameters:
+  EcrImageArn:
+    Type: String
+    Default: "715322001598.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest"
+
 Resources:
     
   ECSTaskRole:
@@ -141,7 +146,7 @@ Resources:
       Family: CloudFormationTaskDefinitionFamilySampleWebApp
       ContainerDefinitions:
         - Name: CloudFormationContainerImageSampleWebApp
-          Image: 715322001598.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest
+          Image: !Ref EcrImageArn
           PortMappings:
           - ContainerPort: 8080
             HostPort: 8080
@@ -151,8 +156,7 @@ Resources:
               awslogs-group: !Ref CloudWatchLogsGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: aws-cloudformation      
-  
-        
+         
   Service:
     Type: AWS::ECS::Service
     DependsOn: LoadBalancerListener
@@ -221,24 +225,9 @@ Resources:
       Protocol: "HTTP"  
 
 Outputs:
-  LoadBalancer:
-    Description: A reference to the Application Load Balancer
-    Value: !Ref ElasticApplicationLoadBalancer
   LoadBalancerUrl:
-    Description: The URL of the ALB
-    Value: !Sub 'http://${ElasticApplicationLoadBalancer.DNSName}'
-  Listener:
-    Description: A reference to a port 80 listener
-    Value: !Ref LoadBalancerListener
-  Cluster:
-    Value: CloudFormationClusterSampleWebApp
-  Service:
-    Value: CloudFormationServiceSampleWebApp
-  TaskDefinition:
-    Value: CloudFormationTaskDefinitionFamilySampleWebApp
-  ContainerImage:
-    Value: CloudFormationContainerImageSampleWebApp        
-  
+    Description: The URL of the ALB to Tomcat 
+    Value: !Sub 'http://${ElasticApplicationLoadBalancer.DNSName}:8080'
   
   
   
