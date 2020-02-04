@@ -2,12 +2,13 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: AppLB+ECS+1service+3task -- prototype
 
 Parameters:
+
   EcrImageArn:
     Type: String
     Default: "715322001598.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest"
 
 Resources:
-    
+  
   ECSTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -26,7 +27,6 @@ Resources:
             Statement:
             - Effect: Allow
               Action:
-
                 # ECS Tasks to download images from ECR
                 - 'ecr:GetAuthorizationToken'
                 - 'ecr:BatchCheckLayerAvailability'
