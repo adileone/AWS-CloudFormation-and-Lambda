@@ -22,6 +22,7 @@ Parameters:
 
   
 Resources:
+
   TestLogProcessDataCLoudFormationFunction:
     Type: AWS::Serverless::Function
     Properties:

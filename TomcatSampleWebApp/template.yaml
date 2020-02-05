@@ -35,7 +35,83 @@ Resources:
                 # ECS tasks to upload logs to CloudWatch
                 - 'logs:CreateLogStream'
                 - 'logs:PutLogEvents'
+              Resource: '*' 
+              
+  AWSChatBotReadOnly:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [chatbot.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess' 
+      Policies:
+        - PolicyName: AWS-Chatbot-NotificationsOnly-Policy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'cloudwatch:Describe*'
+                - 'cloudwatch:Get*'
+                - 'cloudwatch:List*'
               Resource: '*'      
+        - PolicyName: AWS-Chatbot-ReadonlyCommands-Policy
+          PolicyDocument:
+            Statement:
+            - Effect: Deny
+              Action:
+                - 'iam:*'
+                - 's3:GetBucketPolicy'
+                - 'ssm:*'
+                - 'sts:*'
+                - 'kms:*'
+                - 'cognito-idp:GetSigningCertificate'
+                - 'ec2:GetPasswordData'
+                - 'ecr:GetAuthorizationToken'
+                - 'gamelift:RequestUploadCredentials'
+                - 'gamelift:GetInstanceAccess'
+                - 'lightsail:DownloadDefaultKeyPair'
+                - 'lightsail:GetInstanceAccessDetails'
+                - 'lightsail:GetKeyPair'
+                - 'lightsail:GetKeyPairs'
+                - 'redshift:GetClusterCredentials'
+                - 'storagegateway:DescribeChapCredentials'
+              Resource: '*'
+              
+  AWSChatBotOperation:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [chatbot.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/ReadOnlyAccess' 
+      Policies:
+        - PolicyName: AWS-Chatbot-LambdaExecution-Policy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'lambda:invokeAsync'
+                - 'lambda:invokeFunction'
+              Resource: '*'      
+        - PolicyName: AWS-Chatbot-NotificationsOnly-Policy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - 'cloudwatch:Describe*'
+                - 'cloudwatch:Get*'
+                - 'cloudwatch:List*'
+              Resource: '*'                         
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -259,7 +335,10 @@ Outputs:
     Value: !Sub 'http://${ElasticApplicationLoadBalancer.DNSName}:8080'
   LogGroupName:  
     Description: CloudWatch LogGroup name to trigger the lambda  
-    Value: !Ref CloudWatchLogsGroup  
+    Value: !Ref CloudWatchLogsGroup
+  SNSTopic:  
+    Description: SNS topic ARN  
+    Value: !Ref SNSTopic    
   
   
   
