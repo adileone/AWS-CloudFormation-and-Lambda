@@ -1,0 +1,12 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "CFLambdaStack"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-rxkmm42waptf"
+s3_prefix = "CFLambdaStack"
+region = "eu-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "RecipientList=recipient_list OperationsHookUrl=https://hooks.slack.com/services/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 ReadOnlyHookUrl=https://hooks.slack.com/services/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 FilterPattern=ERROR LogGroupName=/aws/ecs/CFSampleWebApp"
+

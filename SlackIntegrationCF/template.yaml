@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  SlackIntegration on CloudFormation
+
+Parameters:
+  RecipientList:
+    Type: String
+    Default: recipient_list
+  OperationsHookUrl:
+    Type: String
+    Default: "https://hooks.slack.com/services/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"
+  ReadOnlyHookUrl:
+    Type: String
+    Default: "https://hooks.slack.com/services/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"  
+  FilterPattern:
+    Type: String
+    Default: "ERROR"
+  LogGroupName:
+    Type: String
+    Default: "/aws/ecs/CFSampleWebApp"
+
+  
+Resources:
+  TestLogProcessDataCLoudFormationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TestLogProcessDataCLoudFormation
+      CodeUri: src/
+      Handler: lambda_function.handler
+      Runtime: python3.7
+      MemorySize: 128
+      Timeout: 3
+      Role: arn:aws:iam::715322001598:role/service-role/TestLogProcessData-role-7zfh05ix
+      Environment:
+        Variables:
+          RECIPIENTS_PARAM_NAME: !Ref RecipientList
+          OPERATIONS_HOOK_URL: !Ref OperationsHookUrl
+          READONLY_HOOK_URL: !Ref ReadOnlyHookUrl
+      Events:
+        CWLog:
+          Properties:
+            FilterPattern: !Ref FilterPattern
+            LogGroupName: !Ref LogGroupName
+          Type: CloudWatchLogs
