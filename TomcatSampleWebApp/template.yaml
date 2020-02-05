@@ -224,10 +224,42 @@ Resources:
       Port: 8080
       Protocol: "HTTP"  
 
+  SNSTopic:
+    Type: 'AWS::SNS::Topic'
+  
+  TopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: alessandroawstest@gmail.com
+      Protocol: email
+      TopicArn: !Ref 'SNSTopic'
+        
+  HealthyHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: cases where HealthyHostCount deviates from a desired level
+      AlarmActions:
+      - !Ref SNSTopic
+      MetricName: HealthyHostCount
+      Namespace: AWS/ApplicationELB
+      Statistic: Minimum
+      Period: '60'
+      EvaluationPeriods: '1'
+      Threshold: '3'
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+      - Name: TargetGroup
+        Value: !GetAtt TargetGroup.TargetGroupFullName
+      - Name: LoadBalancer
+        Value: !GetAtt ElasticApplicationLoadBalancer.LoadBalancerFullName
+
 Outputs:
   LoadBalancerUrl:
     Description: The URL of the ALB to Tomcat 
     Value: !Sub 'http://${ElasticApplicationLoadBalancer.DNSName}:8080'
+  LogGroupName:  
+    Description: CloudWatch LogGroup name to trigger the lambda  
+    Value: !Ref CloudWatchLogsGroup  
   
   
   
