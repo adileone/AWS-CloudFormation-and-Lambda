@@ -19,6 +19,9 @@ Parameters:
   LogGroupName:
     Type: String
     Default: "/aws/ecs/CFSampleWebApp"
+  SNSTopic:
+    Type: String
+    Default: "arn:aws:sns:eu-central-1:770725503646:samplewebapptest-SNSTopic-DVZMXGFW7W21"    
 
   
 Resources:
@@ -40,7 +43,11 @@ Resources:
           READONLY_HOOK_URL: !Ref ReadOnlyHookUrl
       Events:
         CWLog:
+          Type: CloudWatchLogs
           Properties:
             FilterPattern: !Ref FilterPattern
             LogGroupName: !Ref LogGroupName
-          Type: CloudWatchLogs
+        SNS:
+          Type: SNS
+          Properties:
+            Topic: !Ref SNSTopic 
