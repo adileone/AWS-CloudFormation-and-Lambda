@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: An AWS Serverless Specification template describing your function.
+Resources:
+  identifyingunhealthytargets:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: identifying_unhealthy_targets.lambda_handler
+      Runtime: python2.7
+      CodeUri: .
+      Description: ''
+      MemorySize: 128
+      Timeout: 20
+      Role: 'arn:aws:iam::715322001598:role/identifying_unhealty_targets'
+      Events:
+        SNS1:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: SNSTopic1
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-04e976e645b9e5d43
+        SubnetIds:
+          - subnet-af58b3e3
+      Environment:
+        Variables:
+          NAMESPACE: AWS/ApplicationELB
+          ONDEMAND_HEALTHCHECK: 'True'
+          SNS_TOPIC: >-
+            arn:aws:sns:eu-central-1:715322001598:identifying_unhealty_targets_lambda_notification
+          TARGETGROUP_ARN: >-
+            arn:aws:elasticloadbalancing:eu-central-1:715322001598:targetgroup/SWATargetGroup/b22ebde684e06b31
+          TARGETGROUP_TYPE: IP
+  SNSTopic1:
+    Type: 'AWS::SNS::Topic'
