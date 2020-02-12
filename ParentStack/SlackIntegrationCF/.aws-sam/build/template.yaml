@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: 'SlackIntegration on CloudFormation
+
+  '
+Parameters:
+  Sender:
+    Type: String
+    Default: alessandroawstest@gmail.com
+  RecipientList:
+    Type: String
+    Default: ListOfRecipients
+  OperationsHookUrl:
+    Type: String
+    Default: https://hooks.slack.com/services/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
+  ReadOnlyHookUrl:
+    Type: String
+    Default: https://hooks.slack.com/services/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
+  FilterPattern:
+    Type: String
+    Default: ERROR
+  LogGroupName:
+    Type: String
+    Default: /aws/ecs/CFSampleWebApp
+  SNSTopic:
+    Type: String
+    Default: arn:aws:sns:eu-central-1:770725503646:samplewebapptest-SNSTopic-FS2OTE6U6X4H
+Resources:
+  TestLogProcessDataCLoudFormationFunctionIAP:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TestLogProcessDataCLoudFormationIAP
+      CodeUri: TestLogProcessDataCLoudFormationFunctionIAP
+      Handler: lambda_function.handler
+      Runtime: python3.7
+      MemorySize: 128
+      Timeout: 3
+      Role: arn:aws:iam::770725503646:role/test-lambda
+      Environment:
+        Variables:
+          RECIPIENTS_PARAM_NAME:
+            Ref: RecipientList
+          SENDER:
+            Ref: Sender
+          OPERATIONS_HOOK_URL:
+            Ref: OperationsHookUrl
+          READONLY_HOOK_URL:
+            Ref: ReadOnlyHookUrl
+      Events:
+        CWLog:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: FilterPattern
+            LogGroupName:
+              Ref: LogGroupName
+        SNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: SNSTopic

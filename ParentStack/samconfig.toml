@@ -1,0 +1,12 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "ClusterStack"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-nqbvqfobuuej"
+s3_prefix = "ClusterStack"
+region = "eu-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "EcrImageArn=770725503646.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest Sender=alessandroawstest@gmail.com RecipientList=ListOfRecipients OperationsHookUrl=https://hooks.slack.com/services/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 ReadOnlyHookUrl=https://hooks.slack.com/services/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 FilterPattern=ERROR"
+

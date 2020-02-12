@@ -1,0 +1,2 @@
+aws cloudformation package --s3-bucket alessandrotestbucket --output-template-file packaged.yaml --template-file ClusterStack.yaml
+aws cloudformation deploy --stack-name ClusterStack --template-file packaged.yaml --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND   

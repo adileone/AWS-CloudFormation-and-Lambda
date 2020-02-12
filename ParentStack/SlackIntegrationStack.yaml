@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: SlackIntegration on CloudFormation
+
+Parameters:
+  Sender:
+    Type: String
+  RecipientList:
+    Type: String
+  OperationsHookUrl:
+    Type: String
+  ReadOnlyHookUrl:
+    Type: String
+  FilterPattern:
+    Type: String
+  LogGroupName:
+    Type: String
+  SNSTopic:
+    Type: String
+  
+Resources:
+
+  TestLogProcessDataCLoudFormationFunctionSWA:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: TestLogProcessDataCLoudFormationSWA
+      CodeUri: SlackIntegrationCF/src/
+      Handler: lambda_function.handler
+      Runtime: python3.7
+      MemorySize: 128
+      Timeout: 3
+      Role: arn:aws:iam::770725503646:role/test-lambda
+      Environment:
+        Variables:
+          RECIPIENTS_PARAM_NAME: !Ref RecipientList
+          SENDER: !Ref Sender
+          OPERATIONS_HOOK_URL: !Ref OperationsHookUrl
+          READONLY_HOOK_URL: !Ref ReadOnlyHookUrl
+      Events:
+        CWLog:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern: !Ref FilterPattern
+            LogGroupName: !Ref LogGroupName
+        SNS:
+          Type: SNS
+          Properties:
+            Topic: !Ref SNSTopic 

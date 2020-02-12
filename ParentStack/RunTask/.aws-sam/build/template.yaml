@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Lambda RunTask
+Parameters:
+  TaskDefinition:
+    Type: String
+    Default: CloudFormationTaskDefinitionFamilySampleWebApp:6
+  ServiceSubnetA:
+    Type: String
+    Default: subnet-0c5560ef6b26b6468
+  ServiceSubnetB:
+    Type: String
+    Default: subnet-03e10cd61e9cf2c39
+  ServiceSubnetC:
+    Type: String
+    Default: subnet-0c65683ba5f50c18b
+  ServiceSecGroup:
+    Type: String
+    Default: sg-0e5978719a1451eea
+Resources:
+  RunTask:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: RunTask
+      CodeUri: RunTask
+      Handler: lambda_function.handler
+      Runtime: python3.7
+      MemorySize: 128
+      Timeout: 3
+      Role: arn:aws:iam::770725503646:role/test-lambda
+      Environment:
+        Variables:
+          TASK_DEF:
+            Ref: TaskDefinition
+          SERVICE_SUBNET_A:
+            Ref: ServiceSubnetA
+          SERVICE_SUBNET_B:
+            Ref: ServiceSubnetB
+          SERVICE_SUBNET_C:
+            Ref: ServiceSubnetC
+          SERVICE_SEC_GROUP:
+            Ref: ServiceSecGroup
