@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: ManageEventsLambda Java Version
+
+Parameters:
+  IAPFilterPattern:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: The SSM parameter name for the IAP filter pattern
+    Default: /iap/alarms/filter
+  WDTSFilterPattern:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: The SSM parameter name for the WDTS filter pattern
+    Default: /wdts/alarms/filter
+  IAPLogGroupNameWeb:
+    Type: String
+    Default: iap-app-web/fargate
+  IAPLogGroupNameBiz:
+    Type: String
+    Default: iap-app-biz/fargate
+  IAPLogGroupNameNotification:
+    Type: String
+    Default: iap-app-notification/fargate
+  WDTSLogGroupNameWeb:
+    Type: String
+    Default: wdts-app-web/fargate
+  WDTSLogGroupNameBiz:
+    Type: String
+    Default: wdts-app-biz/fargate
+  WDTSLogGroupNameNotification:
+    Type: String
+    Default: wdts-app-notification/fargate
+
+Resources:
+
+  ManageEventsLambdaJava:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-app-ManageEvents
+      CodeUri: pct-manage-events/target/pct-manage-events-1.0-SNAPSHOT.jar
+      Handler: com.wipo.lambda.ManageEvents
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 30
+      Role: arn:aws:iam::770725503646:role/pct-app-lambda-execution-role
+      Events:
+        IAPCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameWeb
+        IAPCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameNotification
+        IAPCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameBiz
+        IAPSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: IapSnsTopic
+        WDTSCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameWeb
+        WDTSCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameNotification
+        WDTSCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameBiz
+        WDTSSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: WdtsSnsTopic
