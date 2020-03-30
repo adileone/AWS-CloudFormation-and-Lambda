@@ -196,7 +196,7 @@ public class ManageEvents implements RequestHandler<Object, String> {
 	public ArrayList<String> getRecipients(String projID) {
 		String[] splitted = projID.split("-", 2); 
 		String project=splitted[0];			
-		String paramListOfRecipientsName="/"+project+"/alarms/sender";			
+		String paramListOfRecipientsName="/"+project+"/ListOfRecipients";			
 		GetParameterResult listOfRecipientsResult = getParameter(paramListOfRecipientsName);
 		String recipientsList = listOfRecipientsResult.getParameter().getValue();
 		String[] mails = recipientsList.split(",");

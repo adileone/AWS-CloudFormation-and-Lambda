@@ -33,7 +33,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-app-ManageEvents
-      CodeUri: s3://alessandrotestbucket/17d4449028dc6a9c26be45524cf5b1b3
+      CodeUri: s3://alessandrotestbucket/185a330e19e891b433c1f36a32cfb1df
       Handler: com.wipo.lambda.ManageEvents
       Runtime: java11
       MemorySize: 512
