@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ASG + LB
+  
+Parameters:  
+  RoleInstanceProfile:
+    Type: String
+  WorldServerAD:
+    Type: String
+    
+Resources:
+#TODO:LB+TG+LISTENER
+
+  WorldServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties: 
+      LaunchTemplateData: 
+        IamInstanceProfile: !Ref RoleInstanceProfile
+        ImageId: ami-0a3c6a5f1f89db2f8
+        InstanceType: t2.large
+        KeyName: AlessandroKeyPairEC2
+        NetworkInterfaces: 
+          - AssociatePublicIpAddress: true
+        TagSpecifications: 
+          - TagSpecification
+        UserData:
+          Fn::Base64: !Sub 
+            - >- 
+              <powershell> 
+              Set-DefaultAWSRegion -Region ${AWS::Region}
+              Set-Variable -name instance_id -value (Invoke-Restmethod -uri http://169.254.169.254/latest/meta-data/instance-id)
+              New-SSMAssociation -InstanceId $instance_id -Name "awsconfig_Domain_${Ws_ad}_ws.aws.wipo.int"
+              </powershell>
+            - {Ws_ad: !Ref WorldServerAD}  
+    LaunchTemplateName: WorldServer-LaunchTemplate
+    
+  WorldServerAutoScalingGroup: 
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: WorldServer_asg
+      AvailabilityZones: 
+        Fn::GetAZs: 
+          Ref: "AWS::Region"
+      DesiredCapacity: "1"
+      HealthCheckType: "EC2"
+      HealthCheckGracePeriod: 300
+      LaunchTemplate: !Ref WorldServerLaunchTemplate
+      MinSize: "1"
+      MaxSize: "4"
+      Tags:
+        - Key: Name
+          Value: Auto-Scaled
+          PropagateAtLaunch: "true"
+        
+
+
+  

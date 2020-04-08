@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  WorldServer infrastructure
+  
+Parameters:
+  VpcCidrBlock:
+    Type: String
+    Default: "10.44.124.0/23"
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Description: CIDR block for the WorldServer VPC
+
+Resources:
+  WorldServerVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: VpcCidrBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: 'Name'
+          Value: 'WorldServerVPC'
+  
+  WorldServerSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref WorldServerVPC
+      CidrBlock:
+        !Select [ 0, !Cidr [ !Ref VpcCidrBlock, 3, 7 ]]
+      AvailabilityZone: !Select 
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        -
+          Key: "Name"
+          Value: !Sub "WorldServerSubnet1"
+
+  WorldServerSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref WorldServerVPC
+      CidrBlock:
+        !Select [ 1, !Cidr [ !Ref VpcCidrBlock, 3, 7 ]]
+      AvailabilityZone: !Select 
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        -
+          Key: "Name"
+          Value: !Sub "WorldServerSubnet2"
+
+  WorldServerSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref WorldServerVPC
+      CidrBlock:
+        !Select [ 2, !Cidr [ !Ref VpcCidrBlock, 3, 7 ]]
+      AvailabilityZone: !Select 
+        - 2
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        -
+          Key: "Name"
+          Value: !Sub "WorldServerSubnet3"
+
+  WorldServerFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref WorldServerVPC
+      GroupName: "WorldServerFSSecurityGroup"
+      GroupDescription: "Security group controlling the inbound traffic to the WorldServer FileSystem"
+      SecurityGroupIngress:
+        - FromPort: "0"
+          ToPort: "0"
+          IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+
+  WorldServerAD: 
+    Type: AWS::DirectoryService::MicrosoftAD
+    Properties: 
+      Name: "ws.aws.wipo.int"
+      Password: '{{resolve:secretsmanager:WorldServerADAdminPassword:SecretString:password}}'
+      ShortName: "WS"
+      Edition: Standard
+      VpcSettings: 
+        SubnetIds: 
+          - !Ref WorldServerSubnet1
+          - !Ref WorldServerSubnet2
+        VpcId: 
+          Ref: WorldServerVPC
+
+  WorldServerFS:
+    Type: AWS::FSx::FileSystem
+    Properties: 
+      FileSystemType: WINDOWS
+      SecurityGroupIds: 
+        - !Ref WorldServerFSSecurityGroup
+      StorageCapacity: 2000
+      StorageType: HDD
+      SubnetIds: 
+        - !Ref WorldServerSubnet1
+      WindowsConfiguration:
+        ActiveDirectoryId: !Ref WorldServerAD
+        ThroughputCapacity: 8
+        WeeklyMaintenanceStartTime: '4:16:30'
+        DailyAutomaticBackupStartTime: '01:00'
+        AutomaticBackupRetentionDays: 2
+        CopyTagsToBackups: false
+        DeploymentType: SINGLE_AZ_2
+        PreferredSubnetId: !Ref WorldServerSubnet1
+  
+  WorldServerInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: WorldServerVPC
+  
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref WorldServerVPC
+      InternetGatewayId: !Ref WorldServerInternetGateway
+  
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WorldServerVPC
+
+  PublicRoute1: 
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref WorldServerInternetGateway 
+  
+  WorldServerSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WorldServerSubnet1
+      RouteTableId: !Ref PublicRouteTable
+  
+  WorldServerSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WorldServerSubnet2
+      RouteTableId: !Ref PublicRouteTable
+  
+  WorldServerSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WorldServerSubnet3
+      RouteTableId: !Ref PublicRouteTable    
+        
+  DomainJoinDocument: 
+    Type: "AWS::SSM::Document"
+    DependsOn: WorldServerAD
+    Properties:
+      Name: !Sub
+        - awsconfig_Domain_${Domain}_ws.aws.wipo.int
+        - { Domain: !Ref WorldServerAD }
+      Content: 
+        schemaVersion: "1.0"
+        description: "Automatic Domain Join Configuration created by Cloudformation Stack."
+        runtimeConfig: 
+          aws:domainJoin: 
+            properties: 
+              directoryId: !Ref WorldServerAD
+              directoryName: "ws.aws.wipo.int"
+              dnsIpAddresses: !GetAtt WorldServerAD.DnsIpAddresses
+              
+  EC2SSMRoleASG:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: "EC2SSMRole-ASG"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+      PermissionsBoundary: "arn:aws:iam::770725503646:policy/WIPO-PermissionsBoundary"
+  
+  RoleInstanceProfile:
+   Type: "AWS::IAM::InstanceProfile"
+   Properties:
+     InstanceProfileName: "EC2-SSM-InstanceProfile"
+     Path: "/"
+     Roles:
+       - !Ref EC2SSMRoleASG
+         
+  DomainJoinPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "AmazonEC2RoleforSSM-ASGDomainJoin"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Action:
+            - "ssm:DescribeAssociation"
+            - "ssm:ListAssociations"
+            - "ssm:GetDocument"
+            - "ssm:UpdateAssociationStatus"
+            - "ssm:UpdateInstanceInformation"
+            - "ssm:CreateAssociation"
+          Resource: "*"
+      Roles: 
+        - !Ref EC2SSMRoleASG
+        
+  ASGStack1:
+    Type: AWS::CloudFormation::Stack
+    Properties: 
+      TemplateURL: asgNested1.yaml
+      Parameters: 
+        RoleInstanceProfile: !Ref RoleInstanceProfile
+        WorldServerAD: !Ref WorldServerAD  
+
+  # ASGStack2:
+  #   Type: AWS::CloudFormation::Stack
+  #   Properties: 
+  #     TemplateURL: asgNested2.yaml
+  #     # Parameters: 
+  #     #   TaskDefinition: !Ref TaskDefinition
+  #     #   ServiceSubnetA: !Ref SubnetA
+  #     #   ServiceSubnetB: !Ref SubnetB
+  #     #   ServiceSubnetC: !Ref SubnetC  
+  #     #   ServiceSecGroup: !Ref SecurityGroup     
+        
+Outputs:
+  WorldServerFS:
+    Value: !Ref WorldServerFS

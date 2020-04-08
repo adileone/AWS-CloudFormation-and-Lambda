@@ -1,0 +1,2 @@
+aws cloudformation package --s3-bucket alessandrotestbucket --output-template-file packaged.yaml --template-file template.yaml
+aws cloudformation deploy --stack-name WorldServer-Stack --template-file packaged.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
