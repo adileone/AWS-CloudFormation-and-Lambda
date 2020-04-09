@@ -35,14 +35,16 @@ Resources:
             Groups: 
               - !Ref SecGroup   
         UserData:
-          Fn::Base64: !Sub 
-            - >- 
-              <powershell> 
-              Set-DefaultAWSRegion -Region ${AWS::Region}
-              Set-Variable -name instance_id -value (Invoke-Restmethod -uri http://169.254.169.254/latest/meta-data/instance-id)
-              New-SSMAssociation -InstanceId $instance_id -Name "awsconfig_Domain_${Ws_ad}_ws.aws.wipo.int"
-              </powershell>
-            - {Ws_ad: !Ref WorldServerAD}  
+          Fn::Base64: 
+            !Sub
+              - |-
+                <powershell> 
+                Set-DefaultAWSRegion -Region ${AWS::Region}
+                Set-Variable -name instance_id -value (Invoke-Restmethod -uri http://169.254.169.254/latest/meta-data/instance-id)
+                New-SSMAssociation -InstanceId $instance_id -Name "awsconfig_Domain_${Ws_ad}_ws.aws.wipo.int"
+                </powershell>
+                <persist>true</persist>
+              - {Ws_ad: !Ref WorldServerAD}  
     
   WorldServerAutoScalingGroup: 
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -51,6 +53,8 @@ Resources:
       AvailabilityZones: 
         Fn::GetAZs: 
           Ref: "AWS::Region"
+      TargetGroupARNs: 
+        - !Ref TargetGroup  
       DesiredCapacity: "1"
       HealthCheckType: "EC2"
       HealthCheckGracePeriod: 300
@@ -98,7 +102,7 @@ Resources:
       Port: 8080
       Protocol: "HTTP"
       VpcId: !Ref Vpc
-      TargetType: "ip"
+      TargetType: "instance"
     DependsOn: WorldServerLoadBalancer
     
   LoadBalancerListener:

@@ -183,6 +183,7 @@ Resources:
       Path: "/"
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMDirectoryServiceAccess
       PermissionsBoundary: "arn:aws:iam::770725503646:policy/WIPO-PermissionsBoundary"
   
   RoleInstanceProfile:
