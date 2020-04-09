@@ -106,17 +106,7 @@ Resources:
       LoadBalancerArn: !Ref WorldServerLoadBalancer
       Port: 8080
       Protocol: "HTTP"  
-  
-  LoadBalancerListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
-      DefaultActions: 
-        - Action
-      LoadBalancerArn: String
-      Port: Integer
-      Protocol: String
-      SslPolicy: String
-    
+
 
         
 
