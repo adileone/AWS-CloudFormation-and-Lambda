@@ -242,7 +242,7 @@ Resources:
   ASGStack1:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-central-1.amazonaws.com/alessandrotestbucket/a3d188ea41d4644c1d8f31b8c49b011f.template
+      TemplateURL: https://s3.eu-central-1.amazonaws.com/alessandrotestbucket/9902d87b621eb1d1be5d08ea5b843737.template
       Parameters:
         RoleInstanceProfile:
           Fn::GetAtt:

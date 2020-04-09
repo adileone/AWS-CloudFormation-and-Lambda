@@ -18,7 +18,6 @@ Parameters:
     Type: String
     
 Resources:
-#TODO:LB+TG+LISTENER
 
   WorldServerLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
@@ -65,11 +64,9 @@ Resources:
   WorldServerLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties: 
-      LoadBalancerAttributes: 
-        - LoadBalancerAttribute
-      Name: !Sub
-        - worldserver_lb_${StackName}
-        - { StackName: !Ref 'AWS::StackName' }
+      # Name: !Sub
+      #   - worldserver_lb_${StackName}
+      #   - { StackName: !Ref 'AWS::StackName' }
       SecurityGroups: 
         - !Ref SecGroup
       Subnets: 
@@ -81,9 +78,9 @@ Resources:
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub
-        - worldserver_tg_${StackName}
-        - { StackName: !Ref 'AWS::StackName' }
+      # Name: !Sub
+      #   - worldserver_tg_${StackName}
+      #   - { StackName: !Ref 'AWS::StackName' }
       HealthCheckPath: "/"
       HealthCheckPort: 8080
       HealthCheckProtocol: HTTP
@@ -105,10 +102,4 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
       LoadBalancerArn: !Ref WorldServerLoadBalancer
       Port: 8080
-      Protocol: "HTTP"  
-
-
-        
-
-
-  
+      Protocol: "HTTP"
