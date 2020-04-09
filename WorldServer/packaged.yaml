@@ -95,40 +95,6 @@ Resources:
         ToPort: '0'
         IpProtocol: '-1'
         CidrIp: 0.0.0.0/0
-  WorldServerAD:
-    Type: AWS::DirectoryService::MicrosoftAD
-    Properties:
-      Name: ws.aws.wipo.int
-      Password: '{{resolve:secretsmanager:WorldServerADAdminPassword:SecretString:password}}'
-      ShortName: WS
-      Edition: Standard
-      VpcSettings:
-        SubnetIds:
-        - Ref: WorldServerSubnet1
-        - Ref: WorldServerSubnet2
-        VpcId:
-          Ref: WorldServerVPC
-  WorldServerFS:
-    Type: AWS::FSx::FileSystem
-    Properties:
-      FileSystemType: WINDOWS
-      SecurityGroupIds:
-      - Ref: WorldServerFSSecurityGroup
-      StorageCapacity: 2000
-      StorageType: HDD
-      SubnetIds:
-      - Ref: WorldServerSubnet1
-      WindowsConfiguration:
-        ActiveDirectoryId:
-          Ref: WorldServerAD
-        ThroughputCapacity: 8
-        WeeklyMaintenanceStartTime: '4:16:30'
-        DailyAutomaticBackupStartTime: 01:00
-        AutomaticBackupRetentionDays: 2
-        CopyTagsToBackups: false
-        DeploymentType: SINGLE_AZ_2
-        PreferredSubnetId:
-          Ref: WorldServerSubnet1
   WorldServerInternetGateway:
     Type: AWS::EC2::InternetGateway
     DependsOn: WorldServerVPC
@@ -174,29 +140,6 @@ Resources:
         Ref: WorldServerSubnet3
       RouteTableId:
         Ref: PublicRouteTable
-  DomainJoinDocument:
-    Type: AWS::SSM::Document
-    DependsOn: WorldServerAD
-    Properties:
-      Name:
-        Fn::Sub:
-        - awsconfig_Domain_${Domain}_ws.aws.wipo.int
-        - Domain:
-            Ref: WorldServerAD
-      Content:
-        schemaVersion: '1.0'
-        description: Automatic Domain Join Configuration created by Cloudformation
-          Stack.
-        runtimeConfig:
-          aws:domainJoin:
-            properties:
-              directoryId:
-                Ref: WorldServerAD
-              directoryName: ws.aws.wipo.int
-              dnsIpAddresses:
-                Fn::GetAtt:
-                - WorldServerAD
-                - DnsIpAddresses
   EC2SSMRoleASG:
     Type: AWS::IAM::Role
     Properties:
@@ -242,14 +185,12 @@ Resources:
   ASGStack1:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-central-1.amazonaws.com/alessandrotestbucket/9902d87b621eb1d1be5d08ea5b843737.template
+      TemplateURL: https://s3.eu-central-1.amazonaws.com/alessandrotestbucket/fd40858a0451b299ea20fb4cbe60a238.template
       Parameters:
         RoleInstanceProfile:
           Fn::GetAtt:
           - RoleInstanceProfile
           - Arn
-        WorldServerAD:
-          Ref: WorldServerAD
         Sub1:
           Ref: WorldServerSubnet1
         Sub2:
@@ -260,7 +201,3 @@ Resources:
           Ref: WorldServerFSSecurityGroup
         Vpc:
           Ref: WorldServerVPC
-Outputs:
-  WorldServerFS:
-    Value:
-      Ref: WorldServerFS
