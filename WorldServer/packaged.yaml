@@ -129,6 +129,51 @@ Resources:
         DeploymentType: SINGLE_AZ_2
         PreferredSubnetId:
           Ref: WorldServerSubnet1
+  WorldServerInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: WorldServerVPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: WorldServerVPC
+      InternetGatewayId:
+        Ref: WorldServerInternetGateway
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: WorldServerVPC
+  PublicRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: WorldServerInternetGateway
+  WorldServerSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: WorldServerSubnet1
+      RouteTableId:
+        Ref: PublicRouteTable
+  WorldServerSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: WorldServerSubnet2
+      RouteTableId:
+        Ref: PublicRouteTable
+  WorldServerSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: WorldServerSubnet3
+      RouteTableId:
+        Ref: PublicRouteTable
   DomainJoinDocument:
     Type: AWS::SSM::Document
     DependsOn: WorldServerAD
@@ -194,6 +239,27 @@ Resources:
           Resource: '*'
       Roles:
       - Ref: EC2SSMRoleASG
+  ASGStack1:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-central-1.amazonaws.com/alessandrotestbucket/a3d188ea41d4644c1d8f31b8c49b011f.template
+      Parameters:
+        RoleInstanceProfile:
+          Fn::GetAtt:
+          - RoleInstanceProfile
+          - Arn
+        WorldServerAD:
+          Ref: WorldServerAD
+        Sub1:
+          Ref: WorldServerSubnet1
+        Sub2:
+          Ref: WorldServerSubnet2
+        Sub3:
+          Ref: WorldServerSubnet3
+        SecGroup:
+          Ref: WorldServerFSSecurityGroup
+        Vpc:
+          Ref: WorldServerVPC
 Outputs:
   WorldServerFS:
     Value:

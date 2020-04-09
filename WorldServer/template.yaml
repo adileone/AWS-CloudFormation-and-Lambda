@@ -217,9 +217,14 @@ Resources:
     Properties: 
       TemplateURL: asgNested1.yaml
       Parameters: 
-        RoleInstanceProfile: !Ref RoleInstanceProfile
-        WorldServerAD: !Ref WorldServerAD  
-
+        RoleInstanceProfile: !GetAtt RoleInstanceProfile.Arn
+        WorldServerAD: !Ref WorldServerAD 
+        Sub1: !Ref WorldServerSubnet1
+        Sub2: !Ref WorldServerSubnet2
+        Sub3: !Ref WorldServerSubnet3
+        SecGroup: !Ref WorldServerFSSecurityGroup
+        Vpc: !Ref WorldServerVPC
+    
   # ASGStack2:
   #   Type: AWS::CloudFormation::Stack
   #   Properties: 

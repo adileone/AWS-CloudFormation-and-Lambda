@@ -6,6 +6,16 @@ Parameters:
     Type: String
   WorldServerAD:
     Type: String
+  Vpc:
+    Type: String
+  Sub1:
+    Type: String
+  Sub2:
+    Type: String
+  Sub3:
+    Type: String
+  SecGroup:
+    Type: String
     
 Resources:
 #TODO:LB+TG+LISTENER
@@ -13,15 +23,15 @@ Resources:
   WorldServerLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties: 
+      LaunchTemplateName: WorldServer-LaunchTemplate
       LaunchTemplateData: 
-        IamInstanceProfile: !Ref RoleInstanceProfile
+        IamInstanceProfile: 
+          Arn: !Ref RoleInstanceProfile
         ImageId: ami-0a3c6a5f1f89db2f8
         InstanceType: t2.large
         KeyName: AlessandroKeyPairEC2
         NetworkInterfaces: 
           - AssociatePublicIpAddress: true
-        TagSpecifications: 
-          - TagSpecification
         UserData:
           Fn::Base64: !Sub 
             - >- 
@@ -31,7 +41,6 @@ Resources:
               New-SSMAssociation -InstanceId $instance_id -Name "awsconfig_Domain_${Ws_ad}_ws.aws.wipo.int"
               </powershell>
             - {Ws_ad: !Ref WorldServerAD}  
-    LaunchTemplateName: WorldServer-LaunchTemplate
     
   WorldServerAutoScalingGroup: 
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -43,13 +52,72 @@ Resources:
       DesiredCapacity: "1"
       HealthCheckType: "EC2"
       HealthCheckGracePeriod: 300
-      LaunchTemplate: !Ref WorldServerLaunchTemplate
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WorldServerLaunchTemplate
+        Version: !GetAtt WorldServerLaunchTemplate.LatestVersionNumber
       MinSize: "1"
       MaxSize: "4"
       Tags:
         - Key: Name
           Value: Auto-Scaled
           PropagateAtLaunch: "true"
+          
+  WorldServerLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      LoadBalancerAttributes: 
+        - LoadBalancerAttribute
+      Name: !Sub
+        - worldserver_lb_${StackName}
+        - { StackName: !Ref 'AWS::StackName' }
+      SecurityGroups: 
+        - !Ref SecGroup
+      Subnets: 
+        - !Ref Sub1
+        - !Ref Sub2
+        - !Ref Sub3
+      Type: application
+      
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub
+        - worldserver_tg_${StackName}
+        - { StackName: !Ref 'AWS::StackName' }
+      HealthCheckPath: "/"
+      HealthCheckPort: 8080
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount : 2        
+      Port: 8080
+      Protocol: "HTTP"
+      VpcId: !Ref Vpc
+      TargetType: "ip"
+    DependsOn: WorldServerLoadBalancer
+    
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref WorldServerLoadBalancer
+      Port: 8080
+      Protocol: "HTTP"  
+  
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions: 
+        - Action
+      LoadBalancerArn: String
+      Port: Integer
+      Protocol: String
+      SslPolicy: String
+    
+
         
 
 
