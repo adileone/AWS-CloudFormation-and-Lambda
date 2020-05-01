@@ -138,40 +138,25 @@ Resources:
       SecurityGroups:
       - !Ref WorldServerFSSecurityGroup           
 
-  # TaskDefinition:
-  #   Type: AWS::ECS::TaskDefinition
-  #   Properties:
-  #     RequiresCompatibilities:
-  #       - "FARGATE"
-  #     Cpu: 256
-  #     Memory: 0.5GB
-  #     TaskRoleArn: "arn:aws:iam::770725503646:role/iap-app-stack-IapApp-1VEI8U8OS1RTW-TaskAPIRole-4XGA3RKD6A5S"
-  #     ExecutionRoleArn: "arn:aws:iam::770725503646:role/iap-app-stack-IapApp-1VEI8U8OS1RTW-TaskAPIRole-4XGA3RKD6A5S"
-  #     NetworkMode: awsvpc      
-  #     ContainerDefinitions:
-  #       - Name: SambaImage
-  #         Image: !Ref DockerImage
-  #         EntryPoint :
-  #           - "sh"
-  #           - "-c"
-  #         Command:
-  #           # - "sudo mkdir /efs"
-  #           # - "/bin/sh -c \"ls -al /mnt/efs\""
-  #           - "/bin/sh -c \"echo Ciao\""  
-  #           # - !Sub "sudo mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${EFS}.efs.eu-central-1.amazonaws.com:/ /efs"
-  #           # - "sudo touch /efs/ciao.txt"
-  #           # - "/bin/sh samba.sh -u \"ec2-user;password\" -s \"shared_x;/efs;yes;no;yes;ec2-user\""
-  #         PortMappings:
-  #           - ContainerPort: 139
-  #             HostPort: 139
-  #           - ContainerPort: 445
-  #             HostPort: 445  
-  #         LogConfiguration:
-  #           LogDriver: awslogs
-  #           Options:
-  #             awslogs-group: !Ref CloudWatchLogsGroup
-  #             awslogs-region: !Ref AWS::Region
-  #             awslogs-stream-prefix: aws-samba
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Statement:
+            - Principal:
+                Service:
+                  - ecs-tasks.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+              Effect: Allow
+      Description: TaskRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+      PermissionsBoundary: !Sub "arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary"
+      RoleName: TaskRole
 
   CustomTaskDefinition:
     Type: 'Custom::TaskDefinition'
@@ -182,7 +167,8 @@ Resources:
         containerDefinitions: [
           {
             name: "samba",
-            image: !Ref DockerImage,
+            #image: "167113264976.dkr.ecr.eu-central-1.amazonaws.com/wssamba",
+            image: "dperson/samba",
             logConfiguration: {
               logDriver: "awslogs",
               options: {
@@ -199,15 +185,15 @@ Resources:
               }
             ],
             entryPoint: ["sh", "-c"],
-            command: ["/bin/bash /usr/bin/samba.sh -u \"ec2-user;password\" -s \"shared_x;/efs;yes;no;yes;ec2-user\""],  
+            command: ["/bin/bash /usr/bin/samba.sh -p -u \"efsuser;password;1000;efsgroup;1000\" -s \"efs;/efs;yes;no;no;efsuser;efsuser;efsuser\""],
             mountPoints: [
               {sourceVolume: "efs", containerPath: "/efs"}
             ]
           }
         ], 
         family: "samba",
-        taskRoleArn: "arn:aws:iam::770725503646:role/smb-app-role", # required for EFS permissions
-        executionRoleArn: "arn:aws:iam::770725503646:role/smb-app-role", # required for EFS permissions
+        taskRoleArn: !Ref TaskRole,
+        executionRoleArn: !Ref TaskRole,
         cpu: "256",
         memory: "512",
         requiresCompatibilities: [FARGATE], 
@@ -305,7 +291,7 @@ Resources:
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
-      DesiredCount: 0
+      DesiredCount: 4
       LoadBalancers:
         - ContainerName: samba
           ContainerPort: 445
@@ -347,4 +333,5 @@ Resources:
           TargetGroupArn: !Ref TargetGroup
       LoadBalancerArn: !Ref NetworkLoadBalancer
       Port: 445
-      Protocol: "TCP"      
+      Protocol: "TCP"   
+
