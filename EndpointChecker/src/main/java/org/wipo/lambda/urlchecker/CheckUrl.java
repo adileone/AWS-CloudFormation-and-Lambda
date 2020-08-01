@@ -25,7 +25,7 @@ import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
 
 /**
- * Lambda function to restart to check CloudMap services endpoint
+ * Lambda function to check CloudMap services endpoint
  * 
  * @author Claudio Morgia, Alessandro Di Leone
  *
@@ -33,15 +33,22 @@ import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
 
 public class CheckUrl implements RequestHandler<Object, String> {
 
+	private DynamoDbClient DDBclient;
+	private AWSServiceDiscovery SDclient;
+	private LambdaLogger logger;
+
+	public CheckUrl() {
+		DDBclient = DynamoDbClient.builder().build();
+		SDclient = AWSServiceDiscoveryClientBuilder.standard().build();
+	}
+
 	@Override
 	public String handleRequest(Object input, Context context) {
 
-		LambdaLogger logger = context.getLogger();
+		logger = context.getLogger();
 
 		logger.log("\nEntering " + this.getClass().getSimpleName() + " handler \n");
 
-		AWSServiceDiscovery SDclient = AWSServiceDiscoveryClientBuilder.standard().build();
-		DynamoDbClient DDBclient = DynamoDbClient.builder().build();
 		String tableName = System.getenv("TableName");
 		if (tableName==null) {
 			throw new RuntimeException("Undefined env variable TableName, cannot proceed.");
@@ -92,7 +99,7 @@ public class CheckUrl implements RequestHandler<Object, String> {
 
 			try {
 				DDBclient.putItem(request);
-				logger.log(tableName +" was successfully updated "+a+" inserted");
+				logger.log("\n" + tableName +" was successfully updated "+a+" inserted");
 			} catch (ResourceNotFoundException e) {
 				throw new RuntimeException("Error: The table "+tableName+" can't be found.\nBe sure that it exists and that you've typed its name correctly!");
 			} catch (DynamoDbException e) {
