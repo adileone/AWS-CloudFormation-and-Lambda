@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ePCT generic deployment stack
+
+Parameters:
+  ArtifactS3Bucket:
+    Type: String
+
+  CanaryExecutionRole:
+    Type: String    
+
+  CanaryName:
+    Type: String    
+  
+  LBDNSName:
+    Type: String
+      
+Resources:
+  
+  CustomCanary:
+    Type: AWS::Synthetics::Canary
+    Properties:        
+      Name: !Ref CanaryName
+      ExecutionRoleArn: !Ref CanaryExecutionRole
+      RuntimeVersion: syn-1.0
+      ArtifactS3Location: !Sub "s3://${ArtifactS3Bucket}/${CanaryName}"
+      Code: 
+        Handler: pageLoadBlueprint.handler
+        Script: !Sub |
+            var synthetics = require('Synthetics');
+            const log = require('SyntheticsLogger');
+
+            const pageLoadBlueprint = async function () {
+
+                // INSERT URL here
+                const URL = "${LBDNSName}";
+
+                let page = await synthetics.getPage();
+                const response = await page.goto(URL, {waitUntil: 'domcontentloaded', timeout: 30000});
+                //Wait for page to render.
+                //Increase or decrease wait time based on endpoint being monitored.
+                await page.waitFor(15000);
+                await synthetics.takeScreenshot('loaded', 'loaded');
+                let pageTitle = await page.title();
+                log.info('Page title: ' + pageTitle);
+                if (response.status() !== 200) {
+                    throw "Failed to load page!";
+                }
+            };
+
+            exports.handler = async () => {
+                return await pageLoadBlueprint();
+            };
+
+      Schedule:
+        Expression: 'rate(5 minute)'
+        DurationInSeconds: '3600'  
+      StartCanaryAfterCreation: true

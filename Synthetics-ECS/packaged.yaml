@@ -1,0 +1,349 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Custom ECS Cluster
+Parameters:
+  EcrImageArn:
+    Type: String
+    Default: 770725503646.dkr.ecr.eu-central-1.amazonaws.com/samplewebapprepo:latest
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: custom-app-sg
+      GroupDescription: to be deleted
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '0'
+        ToPort: '65535'
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: '0'
+        ToPort: '65535'
+        CidrIp: 0.0.0.0/0
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: InternetGateway
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-central-1a
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.1.20.0/24
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-central-1b
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.1.50.0/24
+  SubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-central-1c
+      VpcId:
+        Ref: VPC
+      CidrBlock: 10.1.60.0/24
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: SubnetA
+      RouteTableId:
+        Ref: PublicRouteTable
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: SubnetB
+      RouteTableId:
+        Ref: PublicRouteTable
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: SubnetC
+      RouteTableId:
+        Ref: PublicRouteTable
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: custom-app-cluster
+      ClusterSettings:
+      - Name: containerInsights
+        Value: enabled
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/ecs/custom-app-lg
+      RetentionInDays: 7
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities:
+      - FARGATE
+      Cpu: 256
+      Memory: 0.5GB
+      TaskRoleArn: arn:aws:iam::770725503646:role/iap-app-stack-IapApp-1VEI8U8OS1RTW-TaskAPIRole-4XGA3RKD6A5S
+      ExecutionRoleArn: arn:aws:iam::770725503646:role/iap-app-stack-IapApp-1VEI8U8OS1RTW-TaskAPIRole-4XGA3RKD6A5S
+      NetworkMode: awsvpc
+      Family: CloudFormationTaskDefinitionFamilySampleWebApp
+      ContainerDefinitions:
+      - Name: CloudFormationContainerImageSampleWebApp
+        Image:
+          Ref: EcrImageArn
+        PortMappings:
+        - ContainerPort: 8080
+          HostPort: 8080
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: CloudWatchLogsGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: aws-cloudformation
+  Biz:
+    Type: AWS::ECS::Service
+    DependsOn: LoadBalancerListener
+    Properties:
+      ServiceName: custom-app-biz
+      LaunchType: FARGATE
+      Cluster:
+        Ref: Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      LoadBalancers:
+      - ContainerName: CloudFormationContainerImageSampleWebApp
+        ContainerPort: 8080
+        TargetGroupArn:
+          Ref: TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: SecurityGroup
+          Subnets:
+          - Ref: SubnetA
+          - Ref: SubnetB
+          - Ref: SubnetC
+      TaskDefinition:
+        Ref: TaskDefinition
+  Web:
+    Type: AWS::ECS::Service
+    DependsOn: LoadBalancerListener
+    Properties:
+      ServiceName: custom-app-web
+      LaunchType: FARGATE
+      Cluster:
+        Ref: Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 1
+      LoadBalancers:
+      - ContainerName: CloudFormationContainerImageSampleWebApp
+        ContainerPort: 8080
+        TargetGroupArn:
+          Ref: TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: SecurityGroup
+          Subnets:
+          - Ref: SubnetA
+          - Ref: SubnetB
+          - Ref: SubnetC
+      TaskDefinition:
+        Ref: TaskDefinition
+  Notification:
+    Type: AWS::ECS::Service
+    DependsOn: LoadBalancerListener
+    Properties:
+      ServiceName: custom-app-notification
+      LaunchType: FARGATE
+      Cluster:
+        Ref: Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      LoadBalancers:
+      - ContainerName: CloudFormationContainerImageSampleWebApp
+        ContainerPort: 8080
+        TargetGroupArn:
+          Ref: TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: SecurityGroup
+          Subnets:
+          - Ref: SubnetA
+          - Ref: SubnetB
+          - Ref: SubnetC
+      TaskDefinition:
+        Ref: TaskDefinition
+  ElasticApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: custom-app-lb
+      Type: application
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+      - Ref: SecurityGroup
+      Subnets:
+      - Ref: SubnetA
+      - Ref: SubnetB
+      - Ref: SubnetC
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: custom-app-tg
+      HealthCheckPath: /
+      HealthCheckPort: 8080
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 2
+      Port: 8080
+      Protocol: HTTP
+      VpcId:
+        Ref: VPC
+      TargetType: ip
+    DependsOn: ElasticApplicationLoadBalancer
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: TargetGroup
+      LoadBalancerArn:
+        Ref: ElasticApplicationLoadBalancer
+      Port: 8080
+      Protocol: HTTP
+  SNSTopic:
+    Type: AWS::SNS::Topic
+  TopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: alessandroawstest@gmail.com
+      Protocol: email
+      TopicArn:
+        Ref: SNSTopic
+  MemoryConsumptionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: custom-app-memory-alarm
+      AlarmDescription: memory consumption threshold
+      AlarmActions:
+      - Ref: SNSTopic
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '1'
+      Threshold: '37'
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+      - Name: ClusterName
+        Value: custom-app-cluster
+      - Name: ServiceName
+        Value: custom-app-web
+  ArtifactS3Bucket:
+    Type: AWS::S3::Bucket
+  CanaryExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: canary-execution-role
+      Description: CloudWatch Synthetics lambda execution role for running canaries
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: canary-standard-policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - s3:PutObject
+            - s3:GetBucketLocation
+            Resource:
+            - '*'
+          - Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            - logs:CreateLogGroup
+            Resource:
+            - '*'
+          - Effect: Allow
+            Action:
+            - s3:ListAllMyBuckets
+            Resource:
+            - '*'
+          - Effect: Allow
+            Action:
+            - cloudwatch:PutMetricData
+            Resource:
+            - '*'
+            Condition:
+              StringEquals:
+                cloudwatch:namespace: CloudWatchSynthetics
+  CanaryStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-central-1.amazonaws.com/alessandrotestbucket/0295d18c5ab227e03d735849117bbe48.template
+      Parameters:
+        ArtifactS3Bucket:
+          Ref: ArtifactS3Bucket
+        CanaryExecutionRole:
+          Ref: CanaryExecutionRole
+        CanaryName: common-app-canary
+        LBDNSName:
+          Fn::Sub: http://${ElasticApplicationLoadBalancer.DNSName}:8080
+Outputs:
+  LoadBalancerUrl:
+    Description: The URL of the ALB to Tomcat
+    Value:
+      Fn::Sub: http://${ElasticApplicationLoadBalancer.DNSName}:8080
