@@ -1,0 +1,18 @@
+{
+    "packageType": "v0.2",
+    "systemName": "Monitoring service",
+    "systemVersion": "1.0.BUILD_NUMBER",
+    "codeRepository": {
+        "type": "CODE_REPOSITORY_TYPE",
+        "url": "CODE_REPOSITORY_URL",
+        "branch": "BRANCH_NAME",
+        "commit": "COMMIT_ID"
+    },
+    "build": {
+        "number": "BUILD_NUMBER",
+        "date": "BUILD_DATE_TIME"
+    },
+    "deploy": {
+        "infrastructure": "INFRASTRUCTURE_TYPE"
+    }
+}

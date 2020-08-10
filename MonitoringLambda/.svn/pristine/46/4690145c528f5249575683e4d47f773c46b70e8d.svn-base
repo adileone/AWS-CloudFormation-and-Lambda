@@ -1,0 +1,26 @@
+{
+  "Parameters" : {
+    "NamePrefix" : "pct-common",
+    "CrossAccountRoleARN": "arn:aws:iam::716241334947:role/ses-role-pct-acc"
+  },
+  "Tags" : {
+    "NamePrefix" : "pct-common",
+    "ProductionAccount": "770725503646",
+    "BudgetUnitCode": "0122-12516",
+    "BusinessImpactLevel":"3",
+    "BusinessOwner": "murray.leach@wipo.int",
+    "BusinessUnitName": "pct-information-system-division",
+    "DataClassification": "highly_confidential",
+    "TechnicalOwner": "claudio.morgia@wipo.int"
+  },
+  "StackPolicy" : {
+    "Statement" : [
+      {
+        "Effect" : "Allow",
+        "NotAction" : "Update:Delete",
+        "Principal": "*",
+        "Resource" : "*"
+      }
+    ]
+  }
+}

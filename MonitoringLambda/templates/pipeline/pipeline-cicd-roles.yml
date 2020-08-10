@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: > 
+  Creates the roles for cross account access
+
+Parameters:
+
+  NamePrefix:
+    Description: Prefix added to the name of resources created in this stack
+    Type: String
+    Default: pct-common
+    
+  CicdAccount:
+    Description: The id of the cicd account
+    Type: String
+    Default: 770725503646
+
+Resources:
+
+  CicdRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-cicd-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${CicdAccount}:root
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  CicdPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${NamePrefix}-cicd-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: 
+              - cloudformation:*
+              - s3:*
+              - iam:PassRole
+            Resource: '*'
+      Roles: 
+        - !Ref CicdRole
+
+  KmsCicdPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${NamePrefix}-kms-cicd-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: !Sub arn:aws:kms:${AWS::Region}:${CicdAccount}:key/*
+      Roles: 
+        - !Ref CicdRole
+        - !Ref DeploymentRole
+
+  DeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-deployment-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  DeploymentPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${NamePrefix}-deployment-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:*
+            Resource: 
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/${NamePrefix}*
+              - !Sub arn:aws:iam::${AWS::AccountId}:policy/${NamePrefix}*
+              - !Sub arn:aws:iam::${AWS::AccountId}:instance-profile/${NamePrefix}*
+              - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/*
+          - Effect: Allow
+            Action:
+              - ec2:*
+              - elasticloadbalancing:*
+              - elasticfilesystem:*
+              - autoscaling:*
+              - application-autoscaling:*
+              - elasticache:*
+              - cloudwatch:*
+              - s3:*
+              - sns:*
+              - cloudformation:*
+              - cloudfront:*
+              - rds:*
+              - sqs:*
+              - ecs:*
+              - lambda:*
+              - ssm:*
+              - route53:*
+              - servicediscovery:*
+              - logs:*
+              - kms:*
+              - backup:*
+              - backup-storage:*
+            Resource: '*'
+      Roles: 
+        - !Ref DeploymentRole
+
+Outputs:
+
+  CicdRoleName:
+    Description: The name of the cross account role
+    Value: !Ref CicdRole
+  
+  CicdRoleArn:
+    Description: The Arn of the cross account role
+    Value: !GetAtt CicdRole.Arn
+
+  DeploymentRoleName:
+    Description: The Name of the deployment role
+    Value: !Ref DeploymentRole
+
+  DeploymentRoleArn:
+    Description: The Arn of the deployment role
+    Value: !GetAtt DeploymentRole.Arn
