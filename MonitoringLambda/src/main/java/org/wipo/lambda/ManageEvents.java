@@ -317,24 +317,8 @@ public class ManageEvents implements RequestHandler<Object, String> {
 
 	public String shipLogs(String s3BucketName, String destinationPrefix, Long unixTimestamp, String logGroup, String logStream) {
 
-		//		CreateExportTaskRequest createExportTaskRequest = new CreateExportTaskRequest()
-		//				.withDestination(s3BucketName)
-		//				.withDestinationPrefix(destinationPrefix)
-		//				.withLogGroupName(logGroup)
-		//				.withLogStreamNamePrefix(logStream)
-		//				.withFrom(unixTimestamp-30000)
-		//				.withTo(unixTimestamp);	
-		//
-		//		logger.log("LogGroup: "+logGroup+ " LogStream: "+logStream);
-		//		logger.log("From: "+(unixTimestamp-30000)+" To: "+unixTimestamp);
-		//
-		//		String FROM = new SimpleDateFormat("yyyy-MM-dd_HH:mm:ss").format(unixTimestamp-30000);
-		//		String TO = new SimpleDateFormat("yyyy-MM-dd_HH:mm:ss").format(unixTimestamp);
-		//		logger.log("From: "+FROM+" To: "+TO);
-
-
 		long unixTimeTO = System.currentTimeMillis();  
-		long unixTimeFROM = (System.currentTimeMillis()-30000);
+		long unixTimeFROM = (System.currentTimeMillis()-600000);
 
 		CreateExportTaskRequest createExportTaskRequest = new CreateExportTaskRequest()
 				.withDestination(s3BucketName)
@@ -352,20 +336,6 @@ public class ManageEvents implements RequestHandler<Object, String> {
 		logger.log(resp);
 
 		return exportTask.getTaskId();
-
-
-
-
-		//		logger.log("\n");
-		//		logger.log("\n");
-		//
-		//		logger.log("LogGroup: "+logGroup+ " LogStream: "+logStream);
-		//		logger.log("From: "+unixTimeFROM+" To: "+unixTimeTO);
-		//		
-		//		String FROM1 = new SimpleDateFormat("yyyy-MM-dd_HH:mm:ss").format(unixTimeFROM);
-		//		String TO1 = new SimpleDateFormat("yyyy-MM-dd_HH:mm:ss").format(unixTimeTO);
-		//		logger.log("From: "+FROM1+" To: "+TO1);
-
 	}
 
 
