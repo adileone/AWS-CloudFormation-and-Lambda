@@ -1,0 +1,4 @@
+org/wipo/lambda/ApiScan.class
+org/wipo/lambda/RestartService.class
+org/wipo/lambda/ManageEvents.class
+org/wipo/lambda/ScheduledExportTask.class

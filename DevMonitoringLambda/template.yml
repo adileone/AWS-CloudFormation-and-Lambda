@@ -1,0 +1,264 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: pct-common-lambdas-stack
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "pct-common"
+
+  IAPFilterPattern:
+    Type: String
+    Description: The IAP filter pattern
+    Default: "?Exception ?ERROR"
+
+  WDTSFilterPattern:
+    Type: String
+    Description: The WDTS filter pattern
+    Default: "?Exception ?ERROR"
+
+  IAPLogGroupNameWeb:
+    Type: String
+    Default: iap-app-web/fargate
+
+  IAPLogGroupNameBiz:
+    Type: String
+    Default: iap-app-biz/fargate
+
+  IAPLogGroupNameNotification:
+    Type: String
+    Default: iap-app-notification/fargate
+
+  WDTSLogGroupNameWeb:
+    Type: String
+    Default: wdts-app-web/fargate
+
+  WDTSLogGroupNameBiz:
+    Type: String
+    Default: wdts-app-biz/fargate
+    
+  WDTSLogGroupNameNotification:
+    Type: String
+    Default: wdts-app-notification/fargate
+
+  # CrossAccountRoleARN:
+  #   Type: String
+  #   Default: "null"
+
+Resources:
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-lambda-execution-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
+        - arn:aws:iam::aws:policy/AWSLambdaExecute
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator
+        - arn:aws:iam::aws:policy/CloudWatchEventsFullAccess 
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-sts-assume-role
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: sts:assumerole
+                Resource: "*"
+      PermissionsBoundary: !Sub "arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary"
+
+  ManageEventsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: "pct-common-export-logs"
+
+  BucketPolicyManageEventsBucket:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ManageEventsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:          
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:GetBucketAcl'
+          Effect: Allow
+          Resource: !GetAtt ManageEventsBucket.Arn 
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:PutObject'
+          Effect: Allow
+          Resource: !Sub '${ManageEventsBucket.Arn}/*'
+          Condition:
+            StringEquals:
+              's3:x-amz-acl': 'bucket-owner-full-control'   
+
+  ManageEventsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-manageEvents
+      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ManageEvents
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          # CrossAccountRoleARN: !Ref CrossAccountRoleARN
+          S3Bucket: !Ref ManageEventsBucket
+      Events:
+        IAPCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameWeb
+        IAPCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameNotification
+        IAPCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameBiz
+        IAPSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: IapSnsTopic
+        WDTSCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameWeb
+        WDTSCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameNotification
+        WDTSCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameBiz
+        WDTSSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: WdtsSnsTopic
+    
+  RestartServiceLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-restartService
+      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.RestartService
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        IapHealthyHost:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: IapHealthyHostSnsTopic      
+
+  ExportLogsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: "pct-common-scheduled-export-task"
+
+  BucketPolicyExportLogsBucket:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ExportLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:          
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:GetBucketAcl'
+          Effect: Allow
+          Resource: !GetAtt ExportLogsBucket.Arn  
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:PutObject'
+          Effect: Allow
+          Resource: !Sub '${ExportLogsBucket.Arn}/*'
+          Condition:
+            StringEquals:
+              's3:x-amz-acl': 'bucket-owner-full-control'
+
+  ExportLogsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-exportLogs
+      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ScheduledExportTask
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          S3Bucket: !Ref ExportLogsBucket
+      # Events: ScheduledEventTODO
+
+  URLDynamoDBTable: 
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "endpoint"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "endpoint"
+          KeyType: "HASH"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: "Urls"
+
+  ScanApiLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-scanApi
+      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ApiScan
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TableName: !Ref URLDynamoDBTable    

@@ -1,0 +1,2 @@
+aws cloudformation package --s3-bucket alessandrotestbucket --output-template-file packaged.yaml --template-file template.yml
+aws cloudformation deploy --stack-name pct-common-monitoring-stack --template-file packaged.yaml --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM   
