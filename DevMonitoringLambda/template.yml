@@ -115,7 +115,7 @@ Resources:
       Handler: org.wipo.lambda.ManageEvents
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 90
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
@@ -183,7 +183,7 @@ Resources:
       Handler: org.wipo.lambda.RestartService
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 90
       Role: !GetAtt LambdaExecutionRole.Arn
       Events:
         IapHealthyHost:
@@ -226,7 +226,7 @@ Resources:
       Handler: org.wipo.lambda.ScheduledExportTask
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 360
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
@@ -257,7 +257,7 @@ Resources:
       Handler: org.wipo.lambda.ApiScan
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 60
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:

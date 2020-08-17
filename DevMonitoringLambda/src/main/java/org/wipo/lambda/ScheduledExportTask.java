@@ -50,7 +50,7 @@ public class ScheduledExportTask implements RequestHandler<SNSEvent, String> {
 		logger = context.getLogger();
 
 		logger.log("\nEntering " + this.getClass().getSimpleName() + " handler \n");
-		
+
 		String s3Bucket = System.getenv("S3Bucket");
 		if (s3Bucket==null) {
 			throw new RuntimeException("Undefined env variable S3Bucket, cannot proceed.");
@@ -120,36 +120,40 @@ public class ScheduledExportTask implements RequestHandler<SNSEvent, String> {
 
 			logger.log("\nExportToTime :"+exportToTime+" ssmValue: "+ssmValue+" delta="+ String.valueOf(exportToTime - Long.parseLong(ssmValue)));
 
-			if ((exportToTime - Long.parseLong(ssmValue)) < (24 * 60 * 60 * 1000)){
+			//24hours
+			long offset = (24 * 60 * 60 * 1000);
+
+			if ((exportToTime - Long.parseLong(ssmValue)) < offset ){
 
 				// Haven't been 24hrs from the last export of this log group
 				logger.log("Skipped "+logGroupName+" until 24hrs from last export is completed");
-				continue;
+				//				continue;
+			}else{
+
+				try {
+
+					CreateExportTaskRequest createExportTaskRequest = new CreateExportTaskRequest()
+							.withDestination(s3Bucket)
+							.withDestinationPrefix("logsExport-"+logGroupName)
+							.withLogGroupName(logGroupName)
+							.withFrom(Long.parseLong(ssmValue))
+							.withTo(exportToTime);
+
+					CreateExportTaskResult exportTask = logsClient.createExportTask(createExportTaskRequest);
+					logger.log("\nExportTaskId: "+exportTask.getTaskId());
+
+					try {Thread.sleep(5000);} 
+					catch (InterruptedException e) {e.printStackTrace();}				
+
+				} catch (Exception e) {
+					logger.log("\nError exporting "+logGroupName+" : "+ e.getMessage());
+				}
+
+				PutParameterRequest putParameterRequest = new PutParameterRequest().withName(ssmParameterName).withType("String").withValue(String.valueOf(exportToTime)).withOverwrite(true);
+				PutParameterResult putParameterResult = ssmClient.putParameter(putParameterRequest);
+
+				logger.log("\nNew value for parameter "+ssmParameterName+" = "+ssmValue);
 			}
-
-			try {
-
-				CreateExportTaskRequest createExportTaskRequest = new CreateExportTaskRequest()
-						.withDestination(s3Bucket)
-						.withDestinationPrefix("logsExport-"+logGroupName)
-						.withLogGroupName(logGroupName)
-						.withFrom(Long.parseLong(ssmValue))
-						.withTo(exportToTime);
-
-				CreateExportTaskResult exportTask = logsClient.createExportTask(createExportTaskRequest);
-				logger.log("\nExportTaskId: "+exportTask.getTaskId());
-
-				try {Thread.sleep(5000);} 
-				catch (InterruptedException e) {e.printStackTrace();}				
-
-			} catch (Exception e) {
-				logger.log("\nError exporting "+logGroupName+" : "+ e.getMessage());
-			}
-
-			PutParameterRequest putParameterRequest = new PutParameterRequest().withName(ssmParameterName).withType("String").withValue(ssmValue).withOverwrite(true);
-			PutParameterResult putParameterResult = ssmClient.putParameter(putParameterRequest);
-
-			logger.log("\nNew value for parameter "+ssmParameterName+" = "+ssmValue);
 		}
 
 		return "ok";

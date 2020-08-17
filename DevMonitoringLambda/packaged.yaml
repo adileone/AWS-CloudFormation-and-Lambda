@@ -101,11 +101,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-manageEvents
-      CodeUri: s3://alessandrotestbucket/27293205b6e6db20e03229a221e67643
+      CodeUri: s3://alessandrotestbucket/6e6857fb5c9d07a859ce420898ea31ae
       Handler: org.wipo.lambda.ManageEvents
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 90
       Role:
         Fn::GetAtt:
         - LambdaExecutionRole
@@ -171,11 +171,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-restartService
-      CodeUri: s3://alessandrotestbucket/27293205b6e6db20e03229a221e67643
+      CodeUri: s3://alessandrotestbucket/6e6857fb5c9d07a859ce420898ea31ae
       Handler: org.wipo.lambda.RestartService
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 90
       Role:
         Fn::GetAtt:
         - LambdaExecutionRole
@@ -219,11 +219,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-exportLogs
-      CodeUri: s3://alessandrotestbucket/27293205b6e6db20e03229a221e67643
+      CodeUri: s3://alessandrotestbucket/6e6857fb5c9d07a859ce420898ea31ae
       Handler: org.wipo.lambda.ScheduledExportTask
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 360
       Role:
         Fn::GetAtt:
         - LambdaExecutionRole
@@ -249,11 +249,11 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-scanApi
-      CodeUri: s3://alessandrotestbucket/27293205b6e6db20e03229a221e67643
+      CodeUri: s3://alessandrotestbucket/6e6857fb5c9d07a859ce420898ea31ae
       Handler: org.wipo.lambda.ApiScan
       Runtime: java11
       MemorySize: 512
-      Timeout: 30
+      Timeout: 60
       Role:
         Fn::GetAtt:
         - LambdaExecutionRole

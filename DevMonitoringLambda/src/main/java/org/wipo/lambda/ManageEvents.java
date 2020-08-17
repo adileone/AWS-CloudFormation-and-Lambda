@@ -2,6 +2,8 @@ package org.wipo.lambda;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -26,9 +28,9 @@ import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.logs.AWSLogs;
 import com.amazonaws.services.logs.AWSLogsClientBuilder;
-import com.amazonaws.services.logs.model.CreateExportTaskRequest;
-import com.amazonaws.services.logs.model.CreateExportTaskResult;
-import com.amazonaws.services.logs.model.DescribeExportTasksRequest;
+import com.amazonaws.services.logs.model.GetLogEventsRequest;
+import com.amazonaws.services.logs.model.GetLogEventsResult;
+import com.amazonaws.services.logs.model.OutputLogEvent;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
@@ -47,8 +49,7 @@ import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagement
 import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagementClientBuilder;
 import com.amazonaws.services.simplesystemsmanagement.model.GetParameterRequest;
 import com.amazonaws.services.simplesystemsmanagement.model.GetParameterResult;
-import com.amazonaws.util.Base64; 
-
+import com.amazonaws.util.Base64;
 /**
  * Lambda function to manage notifications
  * 
@@ -221,11 +222,14 @@ public class ManageEvents implements RequestHandler<Object, String> {
 					throw new RuntimeException("Undefined env variable S3Bucket, cannot proceed.");
 				}
 
-				String taskId = shipLogs(s3BucketDestination, logGroup, logStream);
-				String destinationPrefix = "logs-export/"+logGroup;				
+				//				String taskId = shipLogs(s3BucketDestination, logGroup, logStream);
+				//				String destinationPrefix = "logs-export/"+logGroup;				
+				//
+				//				String objectKey = destinationPrefix+"/"+taskId+"/"+logStream.replace("/", "-")+"/000000.gz";
 
-				String objectKey = destinationPrefix+"/"+taskId+"/"+logStream.replace("/", "-")+"/000000.gz";
-				String preSignedUrl = generateSelfSignedUrl(s3BucketDestination, objectKey);
+				String fileName = shipLogs(s3BucketDestination, logGroup, logStream, timestampJson);
+				//				String objectKey = "s3://"+s3BucketDestination+"/"+fileName;
+				String preSignedUrl = generateSelfSignedUrl(s3BucketDestination, fileName+".txt");
 
 				String text_body = "An ERROR log was added to the following logGroup: "+logGroup+"\n\n"
 						+ "logStream: "+logStream+"\n"
@@ -281,10 +285,10 @@ public class ManageEvents implements RequestHandler<Object, String> {
 	public String generateSelfSignedUrl(String bucketName, String objectKey) {
 
 		try {
-			// Set the presigned URL to expire after one hour.
+			// Set the presigned URL to expire after 20 mins.
 			java.util.Date expiration = new java.util.Date();
 			long expTimeMillis = expiration.getTime();
-			expTimeMillis += 1000 * 60 * 60;
+			expTimeMillis += 1000 * 20 * 60;
 			expiration.setTime(expTimeMillis);
 
 			// Generate the presigned URL.
@@ -314,27 +318,48 @@ public class ManageEvents implements RequestHandler<Object, String> {
 	}
 
 
-	public String shipLogs(String s3BucketName, String logGroup, String logStream) {
+	public String shipLogs(String s3BucketName, String logGroup, String logStream, Long timestamp) throws IOException {
 
-		long unixTimeTO = System.currentTimeMillis();  
-		long unixTimeFROM = (System.currentTimeMillis()-30000);
+		//		long unixTimeFROM = (System.currentTimeMillis()-30000);
+		//		long unixTimeTO = System.currentTimeMillis();  
 
-		CreateExportTaskRequest createExportTaskRequest = new CreateExportTaskRequest()
-				.withDestination(s3BucketName)
-				.withDestinationPrefix("logs-export/"+logGroup)
-				.withLogGroupName(logGroup)
-				.withLogStreamNamePrefix(logStream)
-				.withFrom(unixTimeFROM)
-				.withTo(unixTimeTO);
+		//		long unixTimeFROM = Long.parseLong("1597489299000");  
+		//		long unixTimeTO = (System.currentTimeMillis()-30000);
 
-		CreateExportTaskResult exportTask = logsClient.createExportTask(createExportTaskRequest);
-		logger.log("ExportTaskId: "+exportTask.getTaskId());
+		GetLogEventsRequest req = new GetLogEventsRequest(logGroup, logStream)
+				.withStartTime(timestamp-30000)
+				.withEndTime(timestamp);
 
-		DescribeExportTasksRequest detr = new DescribeExportTasksRequest().withTaskId(exportTask.getTaskId());		
-		String resp = logsClient.describeExportTasks(detr).getExportTasks().get(0).toString();
-		logger.log(resp);
+		GetLogEventsResult res = logsClient.getLogEvents(req);
 
-		return exportTask.getTaskId();
+		File file = File.createTempFile(logGroup,".txt",new File ("/tmp"));
+		FileWriter w = new FileWriter(file);
+		for (OutputLogEvent e: res.getEvents()) {
+			w.write(e.getMessage());
+			w.write('\n');
+		}
+		w.close();
+
+		String fileName = logGroup+"."+String.valueOf(timestamp);
+		s3Client.putObject(s3BucketName,fileName+".txt",file);
+		file.delete(); 
+
+		//		CreateExportTaskRequest createExportTaskRequest = new CreateExportTaskRequest()
+		//				.withDestination(s3BucketName)
+		//				.withDestinationPrefix("logs-export/"+logGroup)
+		//				.withLogGroupName(logGroup)
+		//				.withLogStreamNamePrefix(logStream)
+		//				.withFrom(unixTimeFROM)
+		//				.withTo(unixTimeTO);
+		//
+		//		CreateExportTaskResult exportTask = logsClient.createExportTask(createExportTaskRequest);
+		//		logger.log("ExportTaskId: "+exportTask.getTaskId());
+		//
+		//		DescribeExportTasksRequest detr = new DescribeExportTasksRequest().withTaskId(exportTask.getTaskId());		
+		//		String resp = logsClient.describeExportTasks(detr).getExportTasks().get(0).toString();
+		//		logger.log(resp);
+
+		return fileName;
 	}
 
 
