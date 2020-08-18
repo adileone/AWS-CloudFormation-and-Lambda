@@ -115,7 +115,7 @@ Resources:
       Handler: org.wipo.lambda.ManageEvents
       Runtime: java11
       MemorySize: 512
-      Timeout: 90
+      Timeout: 240
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:

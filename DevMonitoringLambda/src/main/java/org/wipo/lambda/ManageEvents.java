@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 import org.json.JSONArray;
@@ -325,19 +326,51 @@ public class ManageEvents implements RequestHandler<Object, String> {
 
 		//		long unixTimeFROM = Long.parseLong("1597489299000");  
 		//		long unixTimeTO = (System.currentTimeMillis()-30000);
+		//
+		//		GetLogEventsRequest req = new GetLogEventsRequest(logGroup, logStream)
+		//				.withStartTime(timestamp-30000)
+		//				.withEndTime(timestamp);
 
-		GetLogEventsRequest req = new GetLogEventsRequest(logGroup, logStream)
-				.withStartTime(timestamp-30000)
-				.withEndTime(timestamp);
-
-		GetLogEventsResult res = logsClient.getLogEvents(req);
+		logger.log("From: "+String.valueOf(System.currentTimeMillis()-60000)+" To: "+String.valueOf(System.currentTimeMillis()));
 
 		File file = File.createTempFile(logGroup,".txt",new File ("/tmp"));
+
 		FileWriter w = new FileWriter(file);
-		for (OutputLogEvent e: res.getEvents()) {
+
+		List<OutputLogEvent> result = new ArrayList<>();
+		String nextToken = null;
+		String previousToken= null;
+		GetLogEventsResult response;
+
+		try {Thread.sleep(10000);} 
+		catch (InterruptedException e) {e.printStackTrace();}
+
+		do {
+
+			GetLogEventsRequest request = new GetLogEventsRequest(logGroup,logStream)
+					.withStartFromHead(true)
+					.withStartTime(System.currentTimeMillis()-600000)
+					.withEndTime(System.currentTimeMillis());
+			if (nextToken != null) request = request.withNextToken(nextToken);
+
+			response = logsClient.getLogEvents(request);
+			result.addAll(response.getEvents());
+
+			previousToken=nextToken;
+			nextToken = response.getNextBackwardToken();
+
+			try {Thread.sleep(1000);} 
+			catch (InterruptedException e) {e.printStackTrace();}
+
+		} while (previousToken==nextToken);
+
+
+
+		for (OutputLogEvent e: result) {
 			w.write(e.getMessage());
 			w.write('\n');
 		}
+
 		w.close();
 
 		String fileName = logGroup+"."+String.valueOf(timestamp);
