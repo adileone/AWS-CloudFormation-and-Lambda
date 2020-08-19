@@ -43,7 +43,7 @@ Parameters:
 
   # CrossAccountRoleARN:
   #   Type: String
-  #   Default: "null"
+  #   Default: "arn:aws:iam::716241334947:role/ses-role-pct-acc"
 
 Resources:
 
@@ -105,14 +105,14 @@ Resources:
           Resource: !Sub '${ManageEventsBucket.Arn}/*'
           Condition:
             StringEquals:
-              's3:x-amz-acl': 'bucket-owner-full-control'   
-
-  ManageEventsLambda:
+              's3:x-amz-acl': 'bucket-owner-full-control' 
+               
+  ManageLogEvents:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: pct-common-manageEvents
+      FunctionName: pct-common-manageLogEvents
       CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
-      Handler: org.wipo.lambda.ManageEvents
+      Handler: org.wipo.lambda.ManageLogEvents
       Runtime: java11
       MemorySize: 512
       Timeout: 240
@@ -143,11 +143,6 @@ Resources:
               Ref: IAPFilterPattern
             LogGroupName:
               Ref: IAPLogGroupNameBiz
-        IAPSNS:
-          Type: SNS
-          Properties:
-            Topic:
-              Fn::ImportValue: IapSnsTopic
         WDTSCWLogWeb:
           Type: CloudWatchLogs
           Properties:
@@ -169,13 +164,39 @@ Resources:
               Ref: WDTSFilterPattern
             LogGroupName:
               Ref: WDTSLogGroupNameBiz
+
+  ManageAlarms:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-manageAlarms
+      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ManageAlarms
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 240
+      Role: !GetAtt LambdaExecutionRole.Arn
+      # Environment:
+      #   Variables:
+      #     CrossAccountRoleARN: !Ref CrossAccountRoleARN
+      Events:
+        IAPSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: IapHealthyHostSnsTopic
+        IapMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: IapSnsTopic              
         WDTSSNS:
           Type: SNS
           Properties:
             Topic:
-              Fn::ImportValue: WdtsSnsTopic
+              Fn::ImportValue: WdtsSnsTopic              
+              
     
-  RestartServiceLambda:
+  RestartService:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-restartService
@@ -186,12 +207,17 @@ Resources:
       Timeout: 90
       Role: !GetAtt LambdaExecutionRole.Arn
       Events:
-        IapHealthyHost:
+        IapMemConsSNSTopic:
           Type: SNS
           Properties:
             Topic:
-              Fn::ImportValue: IapHealthyHostSnsTopic      
-
+              Fn::ImportValue: IapSnsTopic
+        #WdtsMemConsSNSTopic:
+        #  Type: SNS
+        #  Properties:
+        #    Topic:
+        #      Fn::ImportValue: WdtsMemConsSnsTopic
+        
   ExportLogsBucket:
       Type: AWS::S3::Bucket
       Properties:
@@ -261,4 +287,5 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
-          TableName: !Ref URLDynamoDBTable    
+          TableName: !Ref URLDynamoDBTable                      
+              
