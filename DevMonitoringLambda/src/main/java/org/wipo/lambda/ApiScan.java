@@ -21,7 +21,7 @@ import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException; 
 
 /**
- * Lambda function to manage notifications
+ * Lambda function to scan services/API endpoint and insert URLs in DynamoDB table
  * 
  * @author Alessandro Di Leone
  *
