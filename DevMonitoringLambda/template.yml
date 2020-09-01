@@ -111,7 +111,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-manageLogEvents
-      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      CodeUri:  ../DevMonitoringLambda/target/pct-common-lambdas-1.0-SNAPSHOT.jar
       Handler: org.wipo.lambda.ManageLogEvents
       Runtime: java11
       MemorySize: 512
@@ -169,7 +169,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-manageAlarms
-      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      CodeUri:  ../DevMonitoringLambda/target/pct-common-lambdas-1.0-SNAPSHOT.jar
       Handler: org.wipo.lambda.ManageAlarms
       Runtime: java11
       MemorySize: 512
@@ -200,7 +200,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-restartService
-      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      CodeUri:  ../DevMonitoringLambda/target/pct-common-lambdas-1.0-SNAPSHOT.jar
       Handler: org.wipo.lambda.RestartService
       Runtime: java11
       MemorySize: 512
@@ -248,7 +248,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-exportLogs
-      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      CodeUri: ../DevMonitoringLambda/target/pct-common-lambdas-1.0-SNAPSHOT.jar
       Handler: org.wipo.lambda.ScheduledExportTask
       Runtime: java11
       MemorySize: 512
@@ -266,6 +266,9 @@ Resources:
         - 
           AttributeName: "endpoint"
           AttributeType: "S"
+        - 
+          AttributeName: "type"
+          AttributeType: "S"  
       KeySchema: 
         - 
           AttributeName: "endpoint"
@@ -279,7 +282,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: pct-common-scanApi
-      CodeUri: ../../target/pct-common-lambdas-1.0-SNAPSHOT.jar
+      CodeUri: ../DevMonitoringLambda/target/pct-common-lambdas-1.0-SNAPSHOT.jar
       Handler: org.wipo.lambda.ApiScan
       Runtime: java11
       MemorySize: 512
