@@ -185,7 +185,8 @@ Resources:
               }
             ],
             entryPoint: ["sh", "-c"],
-            command: ["/bin/bash /usr/bin/samba.sh -p -u \"efsuser;password;2000;efsgroup;2000\" -s \"efs;/efs;yes;no;no;efsuser;efsuser;efsuser\""],
+            #command: ["/bin/bash /usr/bin/samba.sh -p -u \"efsuser;password;2000;efsgroup;2000\" -s \"efs;/efs;yes;no;no;efsuser;efsuser;efsuser\""],
+            command: ["/bin/bash /usr/bin/samba.sh -u \"efsuser;password;2000;efsgroup;2000\" -s \"efs;/efs;yes;no;no;efsuser;efsuser;efsuser\""],
             mountPoints: [
               {sourceVolume: "efs", containerPath: "/efs"}
             ]

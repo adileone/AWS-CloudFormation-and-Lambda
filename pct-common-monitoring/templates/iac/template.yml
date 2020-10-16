@@ -1,0 +1,717 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: pct-common-lambda-stack
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: "pct-common"
+
+  Region:
+    Type: String
+    Default: "eu-central-1"
+    
+  Environment:
+    Description: Environment type.
+    Type: String
+    AllowedValues: 
+      - dev
+      - test
+      - prod
+    ConstraintDescription: must specify dev or test or prod.
+    
+  MonitoringCidrBlock:
+    Type: String
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Default: "10.44.88.0/23" 
+    Description: VPC CIDR Block
+
+  TransitGatewayId:
+    Type: String
+    Default: "tgw-0d21059e2115ff7b8"
+    Description: Externally defined Transit Gateway id    
+
+  IAPFilterPattern:
+    Type: String
+    Description: The IAP filter pattern
+    Default: "?Exception ?ERROR"
+
+  WDTSFilterPattern:
+    Type: String
+    Description: The WDTS filter pattern
+    Default: "?Exception ?ERROR"
+
+  IAPLogGroupNameWeb:
+    Type: String
+    Default: iap-app-web/fargate
+
+  IAPLogGroupNameBiz:
+    Type: String
+    Default: iap-app-biz/fargate
+
+  IAPLogGroupNameNotification:
+    Type: String
+    Default: iap-app-notification/fargate
+
+  WDTSLogGroupNameWeb:
+    Type: String
+    Default: wdts-app-web/fargate
+
+  WDTSLogGroupNameBiz:
+    Type: String
+    Default: wdts-app-biz/fargate
+    
+  WDTSLogGroupNameNotification:
+    Type: String
+    Default: wdts-app-notification/fargate
+  
+  EPCTWSFilterPattern:
+    Type: String
+    Default: "?Exception ?ERROR"
+    
+  EPCTWSLogGroupName:
+    Type: String
+    Default: /rsp/epct-ws
+  
+  PATSWSFilterPattern:
+    Type: String
+    Default: "?Exception ?ERROR"
+    
+  PATSWSLogGroupName:
+    Type: String
+    Default: /rsp/pats-ws-web
+
+  CrossAccountRoleARN:
+    Type: String
+    
+Conditions: 
+  CreateInDev: !Equals [ !Ref Environment, dev ]    
+  CreateInTest: !Equals [ !Ref Environment, test ]    
+  CreateInProd: !Equals [ !Ref Environment, prod ]
+  CreateInDevAndTest: !Or [!Equals [ !Ref Environment, dev ], !Equals [ !Ref Environment, test ]]
+  CreateInTestAndProd: !Or [!Equals [ !Ref Environment, test ], !Equals [ !Ref Environment, prod ]]
+
+Resources:
+
+  CommonMonitoringVPC:
+    Type: AWS::EC2::VPC
+    Condition: CreateInDev    
+    Properties:
+      CidrBlock:
+        Ref: MonitoringCidrBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}
+  
+  CommonMonitoringSubnet1:
+    Type: AWS::EC2::Subnet
+    Condition: CreateInDev    
+    Properties: 
+      VpcId: !Ref CommonMonitoringVPC
+      CidrBlock:
+        !Select [ 0, !Cidr [ !Ref MonitoringCidrBlock, 2, 8 ]]
+      AvailabilityZone: !Select 
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+
+  CommonMonitoringSubnet2:
+    Type: AWS::EC2::Subnet
+    Condition: CreateInDev
+    Properties: 
+      VpcId: !Ref CommonMonitoringVPC
+      CidrBlock:
+        !Select [ 1, !Cidr [ !Ref MonitoringCidrBlock, 2, 8 ]]
+      AvailabilityZone: !Select 
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+
+  MonitoringTransitGWAttachment:
+    Type: AWS::EC2::TransitGatewayAttachment
+    Condition: CreateInDev
+    Properties:
+      VpcId: !Ref CommonMonitoringVPC
+      TransitGatewayId: !Ref TransitGatewayId
+      SubnetIds:
+        - !Ref CommonMonitoringSubnet1
+        - !Ref CommonMonitoringSubnet2
+      Tags: 
+        - Key: Name
+          Value: !Sub ${NamePrefix}
+  
+  MonitoringRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateInDev
+    Properties:
+      VpcId: !Ref CommonMonitoringVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${NamePrefix}-route-table1
+
+  MonitoringPrivateSubnetAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateInDev
+    Properties:
+      RouteTableId: !Ref MonitoringRouteTable
+      SubnetId: !Ref CommonMonitoringSubnet1
+
+  MonitoringPrivateSubnetAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateInDev
+    Properties:
+      RouteTableId: !Ref MonitoringRouteTable
+      SubnetId: !Ref CommonMonitoringSubnet2
+
+  MonitoringRouteTransitGW:
+    Type: AWS::EC2::Route
+    Condition: CreateInDev
+    DependsOn: MonitoringTransitGWAttachment
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      RouteTableId: !Ref MonitoringRouteTable
+      TransitGatewayId: !Ref TransitGatewayId 
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-lambda-execution-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
+        - arn:aws:iam::aws:policy/AWSLambdaFullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator
+        - arn:aws:iam::aws:policy/AWSCloudMapFullAccess
+        - arn:aws:iam::aws:policy/AmazonRoute53FullAccess
+      Path: /
+      Policies:
+        - PolicyName: !Sub ${NamePrefix}-sts-assume-role
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: sts:assumerole
+                Resource: "*"
+      PermissionsBoundary: !Sub "arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary"
+      
+  MonitoringSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateInDev
+    Properties:
+      GroupName: "pct-common-monitoring"
+      GroupDescription: "monitoring sg"
+      VpcId: !Ref CommonMonitoringVPC    
+
+  ManageEventsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "pct-common-export-logs-${Environment}"
+
+  BucketPolicyManageEventsBucket:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ManageEventsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:          
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:GetBucketAcl'
+          Effect: Allow
+          Resource: !GetAtt ManageEventsBucket.Arn 
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:PutObject'
+          Effect: Allow
+          Resource: !Sub '${ManageEventsBucket.Arn}/*'
+          Condition:
+            StringEquals:
+              's3:x-amz-acl': 'bucket-owner-full-control' 
+               
+  ManageLogEventsDev:
+    Type: AWS::Serverless::Function
+    Condition: CreateInDev
+    Properties:
+      FunctionName: pct-common-manageLogEvents
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ManageLogEvents
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 240
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          Environment: !Ref Environment
+          CrossAccountRoleARN: !Ref CrossAccountRoleARN
+          S3Bucket: !Ref ManageEventsBucket
+          Region: !Ref Region 
+      Events:
+        IAPCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameWeb
+        IAPCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameNotification
+        IAPCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameBiz
+        WDTSCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameWeb
+        WDTSCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameNotification
+        WDTSCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameBiz
+        EPCTWSLog:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: EPCTWSFilterPattern
+            LogGroupName:
+              Ref: EPCTWSLogGroupName
+        PATSWSLog:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: PATSWSFilterPattern
+            LogGroupName:
+              Ref: PATSWSLogGroupName
+               
+  ManageLogEventsTestProd:
+    Type: AWS::Serverless::Function
+    Condition: CreateInTestAndProd
+    Properties:
+      FunctionName: pct-common-manageLogEvents
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ManageLogEvents
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 240
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          Environment: !Ref Environment
+          CrossAccountRoleARN: !Ref CrossAccountRoleARN
+          S3Bucket: !Ref ManageEventsBucket
+          Region: !Ref Region 
+      Events:
+        IAPCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameWeb
+        IAPCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameNotification
+        IAPCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: IAPFilterPattern
+            LogGroupName:
+              Ref: IAPLogGroupNameBiz
+        WDTSCWLogWeb:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameWeb
+        WDTSCWLogNotifications:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameNotification
+        WDTSCWLogBiz:
+          Type: CloudWatchLogs
+          Properties:
+            FilterPattern:
+              Ref: WDTSFilterPattern
+            LogGroupName:
+              Ref: WDTSLogGroupNameBiz                          
+              
+  ManageAlarmsDev:
+    Type: AWS::Serverless::Function
+    Condition: CreateInDev 
+    Properties:
+      FunctionName: pct-common-manageAlarms
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ManageAlarms
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 240
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          Region: !Ref Region
+          Environment: !Ref Environment
+          CrossAccountRoleARN: !Ref CrossAccountRoleARN
+      Events:
+        CzHealthyHostSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "cz-healthyhost-monitoring-topic"
+        CzMemConsSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "cz-memconsumption-monitoring-topic"
+        WSFsxStorageSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "worldserver-freestorage-monitoring-topic"
+        WsDbConnectionsSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "worldserver-dbconnections-monitoring-topic"              
+        EdiProcessingQueueSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "edi-processing-queue-monitoring-topic"
+        InServiceInstancesSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "worldserver-inserviceinstances-monitoring-topic"
+        EpctWsAPISNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "epctws-restapi-monitoring-topic"
+        HczWsAPISNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "hcz-restapi-monitoring-topic"                  
+        IAPHealthyHostSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "iap-healthyhost-monitoring-topic"
+        IAPMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "iap-memconsumption-monitoring-topic"              
+        WDTSHealthyHostSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "wdts-healthyhost-monitoring-topic"
+        WDTSMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "wdts-memconsumption-monitoring-topic"
+
+  ManageAlarmsTestProd:
+    Type: AWS::Serverless::Function
+    Condition: CreateInTestAndProd 
+    Properties:
+      FunctionName: pct-common-manageAlarms
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ManageAlarms
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 240
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          Region: !Ref Region
+          Environment: !Ref Environment
+          CrossAccountRoleARN: !Ref CrossAccountRoleARN
+      Events:
+        IAPHealthyHostSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "iap-healthyhost-monitoring-topic"
+        IAPMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "iap-memconsumption-monitoring-topic"              
+        WDTSHealthyHostSNS:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "wdts-healthyhost-monitoring-topic"
+        WDTSMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "wdts-memconsumption-monitoring-topic"
+                
+  RestartServiceDev:
+    Type: AWS::Serverless::Function
+    Condition: CreateInDev
+    Properties:
+      FunctionName: pct-common-restartService
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.RestartService
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 90
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        IAPMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "iap-memconsumption-monitoring-topic"      
+        WDTSMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "wdts-memconsumption-monitoring-topic"  
+        CzMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "cz-memconsumption-monitoring-topic" 
+
+  RestartServiceTestProd:
+    Type: AWS::Serverless::Function
+    Condition: CreateInTestAndProd
+    Properties:
+      FunctionName: pct-common-restartService
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.RestartService
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 90
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        IAPMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "iap-memconsumption-monitoring-topic"      
+        WDTSMemConsSNSTopic:
+          Type: SNS
+          Properties:
+            Topic:
+              Fn::ImportValue: "wdts-memconsumption-monitoring-topic"  
+             
+  ExportLogsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: !Sub "pct-common-scheduled-export-task-${Environment}"
+        LifecycleConfiguration:
+          Rules:
+          - Id: GlacierRule
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: '30'
+                StorageClass: GLACIER  
+
+  BucketPolicyExportLogsBucket:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref ExportLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:          
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:GetBucketAcl'
+          Effect: Allow
+          Resource: !GetAtt ExportLogsBucket.Arn  
+        - Principal:
+            Service: 'logs.eu-central-1.amazonaws.com'
+          Action: 's3:PutObject'
+          Effect: Allow
+          Resource: !Sub '${ExportLogsBucket.Arn}/*'
+          Condition:
+            StringEquals:
+              's3:x-amz-acl': 'bucket-owner-full-control'
+
+  ExportLogsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-exportLogs
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ScheduledExportTask
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 360
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          S3Bucket: !Ref ExportLogsBucket
+      Events:
+        ExportLogsSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(4 hours)'
+            Name: ExportLogsSchedule
+            Description: schedule for pct-common-exportLogs Lambda
+
+  URLDynamoDBTable: 
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "endpoint"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "endpoint"
+          KeyType: "HASH"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: "Urls"
+
+  ScanEndpointLambdaDev:
+    Type: AWS::Serverless::Function
+    Condition: CreateInDev
+    Properties:
+      FunctionName: pct-common-scanEndpoint
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.EndpointScan
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 60
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds: 
+          - !GetAtt MonitoringSecurityGroup.GroupId
+        SubnetIds:
+          - !Ref CommonMonitoringSubnet1
+          - !Ref CommonMonitoringSubnet2
+      Environment:
+        Variables:
+          TableName: !Ref URLDynamoDBTable
+          Region: !Ref Region
+      Events:
+        EndpointScanSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(12 hours)'
+            Name: EndpointScanSchedule
+            Description: schedule for pct-common-endpointScan Lambda
+
+  ScanEndpointLambdaTestProd:
+    Type: AWS::Serverless::Function
+    Condition: CreateInTestAndProd
+    Properties:
+      FunctionName: pct-common-scanEndpoint
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.EndpointScan
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 60
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TableName: !Ref URLDynamoDBTable
+          Region: !Ref Region
+      Events:
+        EndpointScanSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(12 hours)'
+            Name: EndpointScanSchedule
+            Description: schedule for pct-common-endpointScan Lambda            
+  
+  HealthcheckLambdaDev:
+    Type: AWS::Serverless::Function
+    Condition: CreateInDev
+    Properties:
+      FunctionName: pct-common-healthcheck
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.Healthcheck
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 360
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds: 
+          - !GetAtt MonitoringSecurityGroup.GroupId
+        SubnetIds:
+          - !Ref CommonMonitoringSubnet1
+          - !Ref CommonMonitoringSubnet2
+      Environment:
+        Variables:
+          TableName: !Ref URLDynamoDBTable
+          Region: !Ref Region
+      Events:
+        HealthcheckSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(4 hours)'
+            Name: HealthcheckSchedule
+            Description: schedule for pct-common-healthcheck Lambda
+
+  HealthcheckLambdaTestProd:
+    Type: AWS::Serverless::Function
+    Condition: CreateInTestAndProd
+    Properties:
+      FunctionName: pct-common-healthcheck
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.Healthcheck
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 360
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TableName: !Ref URLDynamoDBTable
+          Region: !Ref Region
+      Events:
+        HealthcheckSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(4 hours)'
+            Name: HealthcheckSchedule
+            Description: schedule for pct-common-healthcheck Lambda

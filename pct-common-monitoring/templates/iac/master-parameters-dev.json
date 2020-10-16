@@ -1,0 +1,7 @@
+{
+    "Parameters":{
+        "Environment": "dev",
+        "NamePrefix": "pct-common",
+        "CrossAccountRoleARN": ""
+    }
+ }
