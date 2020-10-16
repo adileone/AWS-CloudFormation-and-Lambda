@@ -155,7 +155,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
-      PermissionsBoundary: !Sub "arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary"
+      # PermissionsBoundary: !Sub "arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary"
       RoleName: TaskRole
 
   CustomTaskDefinition:
@@ -185,7 +185,7 @@ Resources:
               }
             ],
             entryPoint: ["sh", "-c"],
-            command: ["/bin/bash /usr/bin/samba.sh -p -u \"efsuser;password;1000;efsgroup;1000\" -s \"efs;/efs;yes;no;no;efsuser;efsuser;efsuser\""],
+            command: ["/bin/bash /usr/bin/samba.sh -p -u \"efsuser;password;2000;efsgroup;2000\" -s \"efs;/efs;yes;no;no;efsuser;efsuser;efsuser\""],
             mountPoints: [
               {sourceVolume: "efs", containerPath: "/efs"}
             ]
@@ -247,12 +247,13 @@ Resources:
       Role: !GetAtt 'CustomResourceRole.Arn'
       Runtime: 'nodejs10.x'
       Timeout: 30
+  
   CustomResourceRole:
     Type: 'AWS::IAM::Role'
     Properties:
       RoleName: ws-app-ecs
-      PermissionsBoundary:
-        Fn::Sub: arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary
+      # PermissionsBoundary:
+      #   Fn::Sub: arn:aws:iam::${AWS::AccountId}:policy/WIPO-PermissionsBoundary
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
