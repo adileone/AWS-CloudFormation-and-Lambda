@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: OpenVPN infrastructure
+  
+Parameters:
+  VpcCidrBlock:
+    Type: String
+    Default: "10.44.124.0/23"
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Description: CIDR block for the VPC
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: VpcCidrBlock
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: 'Name'
+          Value: 'MyVPC'
+  
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      VpcId: !Ref VPC
+      CidrBlock:
+        !Select [ 0, !Cidr [ !Ref VpcCidrBlock, 3, 7 ]]
+      AvailabilityZone: !Select 
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      Tags:
+        -
+          Key: "Name"
+          Value: !Sub "MySubnet"
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: "MySecurityGroup"
+      GroupDescription: "Security group"
+      SecurityGroupIngress:
+        - FromPort: "0"
+          ToPort: "0"
+          IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+  
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC
+  
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute: 
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway 
+  
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MySubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::AccountId}-proxy'       
+
+  EC2InstanceRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: "ec2-role"
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - ec2.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AdministratorAccess
+        Path: /
+        Policies:
+          - PolicyName: "ec2-policy"
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action: sts:assumerole
+                  Resource: "*"
+  
+  MyInstanceProfile: 
+    Type: "AWS::IAM::InstanceProfile"
+    Properties: 
+      Path: "/"
+      Roles: 
+        - 
+          !Ref EC2InstanceRole              
+  
+  EC2instance:
+    Type: AWS::EC2::Instance
+    Properties: 
+      ImageId: "ami-0759301b88845d121"
+      InstanceType: "t3.micro"
+      IamInstanceProfile: !Ref MyInstanceProfile
+      KeyName: "ProxyKey"
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: "true"
+          DeleteOnTermination: "true"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !GetAtt SecurityGroup.GroupId
+          SubnetId: !Ref MySubnet
+      Tags: 
+        - Key: "Name"
+          Value: "Proxy"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          sudo yum -y update
+          sudo amazon-linux-extras install epel
+          sudo yum install -y openvpn
+          sudo modprobe iptable_nat
+          echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
+          sudo iptables -t nat -A POSTROUTING -s 10.4.0.1/2 -o eth0 -j MASQUERADE
+          sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+          cd /etc/openvpn
+          sudo openvpn --genkey --secret ovpn.key
+          echo $'port 1194\nproto tcp-server\ndev tun1\nifconfig 10.4.0.1 10.4.0.2\nstatus server-tcp.log\nverb 3\nsecret ovpn.key' > openvpn.conf
+          sudo systemctl start openvpn@openvpn.service
+          sudo chmod 777 ovpn.key
+          aws s3 cp ovpn.key s3://${AWS::AccountId}-proxy/ --region eu-south-1
+          sudo chmod 600 ovpn.key
+
+Outputs:
+  ProxyIp:
+    Value: !GetAtt EC2instance.PublicIp          
+
+        
+ 
+      
+        
+
+ 
