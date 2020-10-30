@@ -1,0 +1,400 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: WorldServer infrastructure based on containers v3.0
+
+Mappings:
+  scaling:
+    dev:
+      min: 0
+      desired: 1
+      max: 1
+    acceptance:
+      min: 1
+      desired: 1
+      max: 4
+    production:
+      min: 2
+      desired: 2
+      max: 4
+
+Parameters:
+
+  WindowsClusterName:
+    Type: String
+    Default: "WorldServerWindowsCluster"
+
+  NamePrefix:
+    Type: String
+    Default: 'pct-ws-containers'
+
+  RepoAccount:
+    Description: the account to use for fetching task images
+    Type: String
+    Default: 734516707349  
+
+  WorldServerCidrBlock:
+    Type: String
+    Default: "10.44.124.0/23"
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    Description: CIDR block for the WorldServer VPC
+
+  OptimizedAMI:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0ec18e0a3ba71ec0b
+
+  InstanceType:
+    Type: String
+    Default: t3.large
+
+  Ec2KeyName:
+    Type: String
+    Default: WorldServerInstancesKeyPair
+
+  Stage:
+    Type: String
+    Default: 'dev'
+
+  ASGName:
+    Type: String
+    Default: WorldServer_ECS_ASG
+
+  WorldServerVpcId:
+    Type: String
+    Default: "vpc-0b944a545f3bbaa68"
+
+  WorldServerPrivateSubnet1:
+    Type: String
+    Default: "subnet-0f64bd18942f0e7d2"
+
+  WorldServerPrivateSubnet2:    
+    Type: String
+    Default: "subnet-0271bb1286c7f6744"
+
+  WSPrivateNamespace:
+    Type: String
+    Default: "ns-k7qin35v3nxno4d3"   
+
+  RoleInstanceProfileArn:
+    Type: String
+    Default: "arn:aws:iam::770725503646:instance-profile/WS-EC2-InstanceProfile"
+
+  DeployOE:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: false
+
+Conditions:
+  DeployOECondition: !Equals [ !Ref DeployOE, "true"]
+
+Resources:
+  
+# For windows cluster scalable target
+  ECSServiceAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${NamePrefix}-ecs-windows-autoscaling-role
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "ecs.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: !Sub ecs-service-${AWS::StackName}
+          PolicyDocument:
+            {
+              "Version": "2012-10-17",
+              "Statement":
+                [
+                  {
+                    "Effect": "Allow",
+                    "Action":
+                      [
+                        "ec2:AuthorizeSecurityGroupIngress",
+                        "ec2:Describe*",
+                        "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                        "elasticloadbalancing:Describe*",
+                        "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                        "elasticloadbalancing:DeregisterTargets",
+                        "elasticloadbalancing:DescribeTargetGroups",
+                        "elasticloadbalancing:DescribeTargetHealth",
+                        "elasticloadbalancing:RegisterTargets"
+                      ],
+                    "Resource": "*"
+                  }
+                ]
+            }
+
+  WindowsClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      VpcId: !Ref WorldServerVpcId
+      GroupDescription: Security group for ECS attached EC2 hosts
+
+  # WindowsCapacityProvider:
+  #   Type: AWS::ECS::CapacityProvider
+  #   Properties: 
+  #     Name: "worldserver-windows-capacity-provider"      
+  #     AutoScalingGroupProvider:
+  #       AutoScalingGroupArn: !Sub "arn:aws:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup::autoScalingGroupName/${ASGName}"
+  #       ManagedScaling:
+  #           MaximumScalingStepSize: 10
+  #           MinimumScalingStepSize: 1
+  #           Status: ENABLED
+  #           TargetCapacity: 80
+  #       ManagedTerminationProtection: ENABLED
+            
+  WorldServerWindowsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref WindowsClusterName
+      # CapacityProviders:
+      #     - !Ref WindowsCapacityProvider
+
+  # ClusterNameParameter:
+  #   Type: AWS::SSM::Parameter
+  #   Properties:
+  #     Name: WorldServerWindowsCluster 
+  #     Type: String
+  #     Value: "WorldServerWindowsCluster"
+  #     Description: To break capacity provider circular dependency.
+
+  WorldServerAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: WorldServerWindowsCluster
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 1
+        PauseTime: PT20M
+        WaitOnResourceSignals: true
+    Properties:
+      AutoScalingGroupName: !Ref ASGName
+      MinSize: !FindInMap [scaling, !Ref Stage, "min"]
+      MaxSize: !FindInMap [scaling, !Ref Stage, "max"]
+      DesiredCapacity: !FindInMap [scaling, !Ref Stage, "desired"]
+      VPCZoneIdentifier:
+        - !Ref WorldServerPrivateSubnet1
+        - !Ref WorldServerPrivateSubnet2
+      LaunchTemplate:
+        LaunchTemplateId:
+          Ref: WorldServerLaunchTemplate
+        Version:
+          Fn::GetAtt:
+            - WorldServerLaunchTemplate
+            - LatestVersionNumber
+      Tags:
+      - Key: Name
+        Value: "WorldServer-EC2-Windows-Cluster"
+        PropagateAtLaunch: true      
+
+  WorldServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: WorldServer-LaunchTemplate
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !Ref RoleInstanceProfileArn
+        ImageId: !Ref OptimizedAMI
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref Ec2KeyName
+        UserData:
+          Fn::Base64: !Sub |
+            <powershell> 
+            Initialize-ECSAgent -Cluster WorldServerWindowsCluster -EnableTaskIAMRole -LoggingDrivers '["json-file","awslogs"]'
+            cfn-signal.exe --stack ${AWS::StackId} --resource WorldServerAutoScalingGroup --region ${AWS::Region} 
+            </powershell>
+            <persist>true</persist> 
+       
+  WorldServerLinuxCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: WorldServerLinuxCluster
+
+  WorldServerEFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-efs"
+      PerformanceMode: generalPurpose
+
+  WorldServerFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref WorldServerVpcId
+      GroupName: !Sub "${NamePrefix}-efs-sg"
+      GroupDescription: "Security group controlling the inbound traffic to the WorldServer FileSystem"
+      SecurityGroupIngress:
+        - FromPort: 0
+          ToPort: 0
+          IpProtocol: "-1"
+          CidrIp: !Ref WorldServerCidrBlock
+
+  MountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref WorldServerEFS
+      SubnetId: !Ref WorldServerPrivateSubnet1
+      SecurityGroups:
+        - !Ref WorldServerFSSecurityGroup
+
+  MountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref WorldServerEFS
+      SubnetId: !Ref WorldServerPrivateSubnet2
+      SecurityGroups:
+        - !Ref WorldServerFSSecurityGroup    
+
+  WorldServerAlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref WorldServerVpcId
+      GroupName: !Sub "${NamePrefix}-loadbalancer-sg"
+      GroupDescription: "Security group controlling the inbound traffic to the WorldServer EC2 instances"
+      SecurityGroupIngress:
+        - FromPort: 0
+          ToPort: 0
+          IpProtocol: "-1"
+          CidrIp: !Ref WorldServerCidrBlock      
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: !Sub "${NamePrefix}-loadbalancer"
+      SecurityGroups: 
+        - !Ref WorldServerAlbSecurityGroup
+      Subnets: 
+        - !Ref WorldServerPrivateSubnet1
+        - !Ref WorldServerPrivateSubnet2
+      Type: application
+      Scheme: internal
+
+# WS App server ALB listener
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "fixed-response"
+          FixedResponseConfig:   
+            ContentType: "text/plain"
+            MessageBody: "page not found"
+            StatusCode: "404"
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+
+  SambaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: wssamba.yaml
+      Parameters:
+        Cluster: !Ref WorldServerLinuxCluster
+        WorldServerVPC: !Ref WorldServerVpcId
+        WorldServerSubnet1: !Ref WorldServerPrivateSubnet1
+        WorldServerSubnet2: !Ref WorldServerPrivateSubnet2
+        EFSSecurityGroup: !Ref WorldServerFSSecurityGroup
+        RepoAccount: !Ref RepoAccount      
+
+  AppStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: wscontainer.yaml
+      Parameters:
+        ServiceName: "ws-application"
+        FileSystemId: !Ref WorldServerEFS
+        TaskType: "linux"
+        SambaMountPoint: !GetAtt SambaStack.Outputs.Mountpoint
+        Cluster: !Ref WorldServerLinuxCluster
+        WorldServerVPC: !Ref WorldServerVpcId
+        VPCSubnets: !Join [ "," , [!Ref WorldServerPrivateSubnet1, !Ref WorldServerPrivateSubnet2]]
+        RepoAccount: !Ref RepoAccount
+        PrivateNamespace: !Ref WSPrivateNamespace
+        TaskRepository: "ws-app"
+        Listener: !Ref LoadBalancerListener
+        BaseURLList: !Join [ ",", [ "/ws", "/ws-api", "/ws-legacy" ] ]
+        RulesPriority: "1"
+        WorldServerAlbSecurityGroup: !Ref WorldServerAlbSecurityGroup
+        ECSServiceAutoScalingRoleARN: !GetAtt  ECSServiceAutoScalingRole.Arn
+        LoadBalancer: !Ref ApplicationLoadBalancer
+        LoadBalancerDNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        DeployOE: !Ref DeployOE
+
+  WorkflowStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: wscontainer.yaml
+      Parameters:
+        ServiceName: "ws-workflow"
+        FileSystemId: !Ref WorldServerEFS
+        TaskType: "linux"
+        SambaMountPoint: !GetAtt SambaStack.Outputs.Mountpoint
+        Cluster: !Ref WorldServerLinuxCluster
+        WorldServerVPC: !Ref WorldServerVpcId
+        VPCSubnets: !Join [ "," , [!Ref WorldServerPrivateSubnet1, !Ref WorldServerPrivateSubnet2]]
+        RepoAccount: !Ref RepoAccount
+        TaskRepository: "ws-app"
+        PrivateNamespace: !Ref WSPrivateNamespace
+        Listener: !Ref LoadBalancerListener
+        BaseURLList: "/wf"
+        RulesPriority: "2"
+        WorldServerAlbSecurityGroup: !Ref WorldServerAlbSecurityGroup
+        ECSServiceAutoScalingRoleARN: !GetAtt  ECSServiceAutoScalingRole.Arn
+        LoadBalancer: !Ref ApplicationLoadBalancer
+        LoadBalancerDNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        DeployOE: !Ref DeployOE
+
+  FTSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: wscontainer.yaml
+      Parameters:
+        ServiceName: "ws-fts"
+        FileSystemId: !Ref WorldServerEFS
+        TaskType: "windows"
+        SambaMountPoint: !GetAtt SambaStack.Outputs.Mountpoint
+        Cluster: !Ref WindowsClusterName
+        WorldServerVPC: !Ref WorldServerVpcId
+        VPCSubnets: !Join [ "," , [!Ref WorldServerPrivateSubnet1, !Ref WorldServerPrivateSubnet2]]
+        RepoAccount: !Ref RepoAccount
+        TaskRepository: "	ws-fts" 
+        PrivateNamespace: !Ref WSPrivateNamespace
+        Listener: !Ref LoadBalancerListener
+        BaseURLList: ""
+        RulesPriority: ""
+        WorldServerAlbSecurityGroup: !Ref WorldServerAlbSecurityGroup
+        ECSServiceAutoScalingRoleARN: !GetAtt  ECSServiceAutoScalingRole.Arn
+        LoadBalancer: !Ref ApplicationLoadBalancer
+        LoadBalancerDNSName: !GetAtt ApplicationLoadBalancer.DNSName
+
+  OEStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: DeployOECondition
+    Properties:
+      TemplateURL: wscontainer.yaml
+      Parameters:
+        ServiceName: "ws-online-editor"
+        FileSystemId: !Ref WorldServerEFS
+        TaskType: "windows"
+        SambaMountPoint: !GetAtt SambaStack.Outputs.Mountpoint
+        Cluster: !Ref WorldServerWindowsCluster
+        WorldServerVPC: !Ref WorldServerVpcId
+        VPCSubnets: !Join [ "," , [!Ref WorldServerPrivateSubnet1, !Ref WorldServerPrivateSubnet2]]
+        RepoAccount: !Ref RepoAccount
+        TaskRepository: "epct-app-ws" 
+        PrivateNamespace: !Ref WSPrivateNamespace
+        Listener: !Ref LoadBalancerListener
+        BaseURLList: !Join [ ",", [ "/oe", "/oe-router", "/bcms" ] ]
+        RulesPriority: "3"
+        WorldServerAlbSecurityGroup: !Ref WorldServerAlbSecurityGroup
+        ECSServiceAutoScalingRoleARN: !GetAtt  ECSServiceAutoScalingRole.Arn
+        LoadBalancer: !Ref ApplicationLoadBalancer
+        LoadBalancerDNSName: !GetAtt ApplicationLoadBalancer.DNSName

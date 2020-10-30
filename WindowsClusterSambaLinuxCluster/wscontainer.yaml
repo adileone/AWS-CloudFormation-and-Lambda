@@ -1,0 +1,431 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: WorldServer generic deployment stack
+
+Mappings:
+  variables:
+    ws-application:
+      awsWorkflowDaemon: 0
+      awsBackgroundDaemon: 2
+      awsNotificationEngine: "off"
+      awsRecurrenceEngine: "off"
+      awsCloneName: "wstapppro"     
+      awsAppNav: "/ws"
+    ws-workflow:
+      awsWorkflowDaemon: 4
+      awsBackgroundDaemon: 1
+      awsNotificationEngine: "on"
+      awsRecurrenceEngine: "on"
+      awsCloneName: "wstwfpro"
+      awsAppNav: "/wf/ws"
+
+Parameters:
+
+  FileSystemId:
+    Type: String
+
+  TaskType:
+    Type: String
+    AllowedValues:
+        - linux
+        - windows
+
+  Cluster:
+    Type: String
+
+  PrivateNamespace:
+    Type: String 
+
+  WorldServerVPC:
+    Type: String
+
+  VPCSubnets:
+    Type: CommaDelimitedList
+
+  #Infer from global fake default from ecs roib
+  TaskExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::770725503646:role/ws-samba-taskexecution-role
+
+  #Infer from global fake default from ecs roib
+  TaskAPIRoleArn:
+    Type: String
+    Default: arn:aws:iam::770725503646:role/samba-task-role
+  
+  WorldServerAlbSecurityGroup:
+    Type: String
+
+  TaskRepository:
+    Type: String
+
+  DeploymentEnv:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "Environment"
+
+  ServiceName:
+    Type: String
+
+  BaseURLList:
+    Type: CommaDelimitedList
+
+  RulesPriority:  
+    Type: String
+
+  Listener:
+    Type: String
+
+  HealthCheckPath:
+    Type: String
+    Default: "/"
+
+  TaskCPU:
+    Type: String
+    Default: "2048"
+
+  TaskMemory:
+    Type: String
+    Default: "4096"
+
+  RepoAccount:
+    Type: String
+
+  PlatformVersion:
+    Type: String
+    Default: '1.4.0'
+
+  NamePrefix:
+    Type: String
+    Default: 'pct-ws-containers'
+
+  ECSServiceAutoScalingRoleARN: 
+    Type: String
+  
+  SambaMountPoint:
+    Type: String
+  
+  LoadBalancer:
+    Type: String
+
+  DBHost:
+    Type: String
+    Default: "rwsgp8kp7mhg4t.chath1nqz0sq.eu-central-1.rds.amazonaws.com"  
+
+  DeployOE:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: false
+  
+  LoadBalancerDNSName:
+    Type: String  
+
+Conditions:
+  ProductionGrade: !Not [!Equals [ !Ref DeploymentEnv, "dev" ]]
+  LaunchLinux: !Equals [!Ref TaskType, "linux"]
+  LaunchWindows: !Equals [!Ref TaskType, "windows"]
+  IsNotFTS: !Not [!Equals [!Ref ServiceName, "ws-fts"]]
+  
+Resources:
+  ComponentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ServiceName}-ec2-sg"
+      GroupDescription: Access to the Fargate containers
+      VpcId: !Ref WorldServerVPC
+
+  EcsSecurityGroupIngressFromPublicALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from the ALB
+      GroupId: !Ref ComponentSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref WorldServerAlbSecurityGroup
+
+  EcsSecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from other containers in the same security group
+      GroupId: !Ref ComponentSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref ComponentSecurityGroup
+  
+  WSComponentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/rsp/ws/containers/${ServiceName}"
+
+  LinuxTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Condition: LaunchLinux
+    Properties:
+      Family: !Ref AWS::StackName
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - "EC2"
+        - "FARGATE"
+      Cpu: "1024"
+      Memory: "2048"
+      TaskRoleArn: !Ref TaskAPIRoleArn
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      Volumes: 
+        - Name: "efs"
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref FileSystemId 
+            TransitEncryption: "ENABLED" 
+      ContainerDefinitions:
+        - Name: !Sub "${ServiceName}-container"
+          Image: !Sub "${RepoAccount}.dkr.ecr.${AWS::Region}.amazonaws.com/${TaskRepository}"
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment: 
+            - Name: aws_fs
+              Value: !Sub "//${SambaMountPoint}/efs"
+            - Name: aws_oe_enabled
+              Value: !Ref DeployOE
+            - Name: aws_lb
+              Value: !Ref LoadBalancer
+            - Name: aws_dbhost
+              Value: !Ref DBHost  
+            - Name: aws_dbname
+              Value: "wsdb"
+            - Name: aws_dbpassword
+              Value: "4YmE6aCX4aSq7buc67qY67uC4YmG6aCS"
+            - Name: aws_nav_url
+              Value: !Sub "http://${LoadBalancerDNSName}/ws" 
+            - Name: aws_workflow_daemon
+              Value: !FindInMap [variables, !Ref ServiceName, "awsWorkflowDaemon"]  
+            - Name: aws_background_daemon
+              Value: !FindInMap [variables, !Ref ServiceName, "awsBackgroundDaemon"]
+            - Name: aws_notification_engine
+              Value: !FindInMap [variables, !Ref ServiceName, "awsNotificationEngine"]  
+            - Name: aws_clone_name
+              Value: !FindInMap [variables, !Ref ServiceName, "awsCloneName"] 
+            - Name: aws_recurrence_engine
+              Value: !FindInMap [variables, !Ref ServiceName, "awsRecurrenceEngine"]
+            - Name: aws_app_url
+              Value: !Sub "http://${LoadBalancerDNSName}"
+            - Name: aws_app_nav
+              Value: !Sub 
+                      - "http://${LoadBalancerDNSName}/${uri}"
+                      - uri: !FindInMap [variables, !Ref ServiceName, "awsAppNav"]      
+            - Name: aws_app_dns
+              Value: !Ref LoadBalancerDNSName                                        
+          Essential: true
+          MountPoints:
+            - ContainerPath: "/var/efs"
+              SourceVolume: "efs"                   
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              "awslogs-region": !Ref "AWS::Region"
+              "awslogs-group": !Ref WSComponentLogGroup
+              "awslogs-stream-prefix": !Ref "AWS::StackName"    
+
+  WindowsTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Condition: LaunchWindows
+    Properties:
+      Family: !Ref 'AWS::StackName'
+      RequiresCompatibilities:
+        - "EC2"
+      Cpu: !Ref TaskCPU
+      Memory: !Ref TaskMemory
+      TaskRoleArn: !Ref TaskAPIRoleArn
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn     
+      ContainerDefinitions:
+        - Name: !Sub "${ServiceName}-container"
+          Image: !Sub "${RepoAccount}.dkr.ecr.${AWS::Region}.amazonaws.com/${TaskRepository}"
+          PortMappings:       
+            - ContainerPort: 8080
+              Protocol: tcp
+              HostPort: 8080
+          Environment:
+            - Name: ENVNAME
+              Value: !Ref DeploymentEnv
+            - Name: aws_samba
+              Value: !Ref SambaMountPoint
+            - Name: aws_logfilename
+              Value: "ftslog"
+            - Name: aws_dbhost
+              Value: !Ref DBHost
+            - Name: aws_dbuser
+              Value: "admin"
+            - Name: aws_dbpassword
+              Value: "4YmE6aCX4aSq7buc67qY67uC4YmG6aCS"
+            - Name: aws_dbname
+              Value: "wsdb"
+            - Name: aws_fs
+              Value: "/efs"    
+          Essential: true
+
+  WSComponentDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Condition: IsNotFTS
+    Properties:
+      Description: Discovery Service for worldserver components
+      DnsConfig:
+        RoutingPolicy: MULTIVALUE
+        DnsRecords:
+          - TTL: 60
+            Type: A
+          - TTL: 60
+            Type: SRV
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: !Sub "${NamePrefix}-${ServiceName}"
+      NamespaceId: !Ref PrivateNamespace
+
+  WSComponentTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Condition: IsNotFTS
+    Properties:
+      Name: !Sub "${ServiceName}-target-group"
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200-299'
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref WorldServerVPC    
+
+  WSComponentListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: IsNotFTS
+    Properties: 
+      Actions: 
+        - Type: forward
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref WSComponentTargetGroup
+      Conditions: 
+        - Field: path-pattern
+          PathPatternConfig:
+            Values: !Ref BaseURLList
+      ListenerArn: !Ref Listener
+      Priority: !Ref RulesPriority     
+
+  LinuxService:
+    Type: AWS::ECS::Service
+    Condition: LaunchLinux
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: !If [ ProductionGrade, 3 , 1]
+      LaunchType: FARGATE
+      PlatformVersion: !Ref PlatformVersion
+      ServiceName: !Ref ServiceName
+      ServiceRegistries:
+        - RegistryArn: !GetAtt WSComponentDiscoveryService.Arn
+          Port: 8080
+      TaskDefinition:
+        !Ref LinuxTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref ComponentSecurityGroup
+          Subnets: !Ref VPCSubnets
+      LoadBalancers:
+        - ContainerName: !Sub "${ServiceName}-container"
+          ContainerPort: 8080
+          TargetGroupArn: !Ref WSComponentTargetGroup
+
+  WindowsService:
+    Type: AWS::ECS::Service
+    Condition: LaunchWindows
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: !If [ ProductionGrade, 3 , 1]
+      LaunchType: EC2
+      ServiceName: !Ref ServiceName
+      TaskDefinition:
+        !Ref WindowsTaskDefinition
+
+  ServiceScalableTarget:
+    Type: "AWS::ApplicationAutoScaling::ScalableTarget"
+    Condition: LaunchWindows
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 1
+      ResourceId: !Join [ "/", [ service, !Ref Cluster, !GetAtt WindowsService.Name ]]
+      RoleARN: !Ref ECSServiceAutoScalingRoleARN
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ServiceScaleOutPolicy:
+    Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
+    Condition: LaunchWindows
+    Properties:
+      PolicyName: !Sub ${ServiceName}-ScaleOutPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 1800
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 1
+
+  ServiceScaleInPolicy:
+    Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
+    Condition: LaunchWindows
+    Properties:
+      PolicyName: !Sub ${ServiceName}-ScaleInPolicy
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ServiceScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 1800
+        MetricAggregationType: Average
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -1
+
+  CPUScaleOutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: LaunchWindows
+    Properties:
+      AlarmName: CPU utilization greater than 90%
+      AlarmDescription: Alarm if cpu utilization greater than 90% of reserved cpu
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt WindowsService.Name
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref ServiceScaleOutPolicy
+
+  CPUScaleInAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: LaunchWindows
+    Properties:
+      AlarmName: CPU utilization less than 70%
+      AlarmDescription: Alarm if cpu utilization less than 70% of reserved cpu
+      Namespace: AWS/ECS
+      MetricName: CPUetAtt WindowsService.Name
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 10
+      Threshold: 70
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref ServiceScaleInPolicy
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt WindowsService.Name

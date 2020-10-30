@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: WorldServer samba adapter
+
+Parameters:
+  WorldServerVPC:
+    Type: String
+
+  WorldServerSubnet1:
+    Type: String
+
+  WorldServerSubnet2:
+    Type: String
+
+  Cluster:
+    Type: String
+  
+  EFSSecurityGroup:
+    Type: String
+
+  RepoAccount:
+    Type: String
+
+Resources:
+  SambaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /rsp/wssamba
+      RetentionInDays: 7
+
+  SambaTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: samba-task-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+            Effect: Allow
+      Description: TaskRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+
+  SambaTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 'ws-samba-taskexecution-role'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBReadOnlyAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: samba-nlb
+      Type: network
+      Subnets:
+        - !Ref WorldServerSubnet1
+        - !Ref WorldServerSubnet2
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: NetworkLoadBalancer
+    Properties:
+      Name: samba-nlb-target
+      Port: 445
+      Protocol: "TCP"
+      VpcId: !Ref WorldServerVPC
+      TargetType: "ip"
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Port: 445
+      Protocol: "TCP"
+
+  SambaTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref AWS::StackName
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: "1024"
+      Memory: "2048"
+      TaskRoleArn: !GetAtt SambaTaskRole.Arn
+      ExecutionRoleArn: !GetAtt SambaTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: "samba"
+          #Image: !Sub "${RepoAccount}.dkr.ecr.${AWS::Region}.amazonaws.com/wssamba:latest"
+          #Image: !Sub "770725503646.dkr.ecr.${AWS::Region}.amazonaws.com/wssamba"
+          Image: !Sub "770725503646.dkr.ecr.${AWS::Region}.amazonaws.com/wssamba:latest"
+          #Image: "dperson/samba"
+          PortMappings:
+            - ContainerPort: 445
+              Protocol: tcp
+          EntryPoint:
+            - "sh"
+            - "-c"
+          Command:
+            - '/bin/bash /usr/bin/samba.sh -u "efsuser;password;1000;efsgroup;1000" -s "efs;/var/efs;yes;no;no;efsuser;efsuser;efsuser"'
+          Essential: true
+          MountPoints:
+            - ContainerPath: "/var/efs"
+              SourceVolume: "efs"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              "awslogs-region": !Ref "AWS::Region"
+              "awslogs-group": !Ref SambaLogGroup
+              "awslogs-stream-prefix": !Ref "AWS::StackName"
+      Volumes: 
+      - 
+        Name: "efs"        
+
+  SambaService:
+    Type: AWS::ECS::Service
+    DependsOn: LoadBalancerListener
+    Properties:
+      ServiceName: SmbService
+      LaunchType: FARGATE
+      PlatformVersion: "1.4.0"
+      Cluster: !Ref Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 1
+      LoadBalancers:
+        - ContainerName: samba
+          ContainerPort: 445
+          TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref EFSSecurityGroup
+          Subnets:
+            - !Ref WorldServerSubnet1
+            - !Ref WorldServerSubnet2
+      TaskDefinition: !Ref SambaTaskDefinition
+
+Outputs:
+  Mountpoint:
+    Value: !Sub "${NetworkLoadBalancer.DNSName}/efs"
