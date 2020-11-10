@@ -9,19 +9,25 @@ import java.util.Set;
 
 import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
+import com.amazonaws.services.cloudwatch.model.DashboardEntry;
+import com.amazonaws.services.cloudwatch.model.DashboardNotFoundErrorException;
+import com.amazonaws.services.cloudwatch.model.DeleteDashboardsRequest;
+import com.amazonaws.services.cloudwatch.model.DeleteDashboardsResult;
 import com.amazonaws.services.cloudwatch.model.DescribeAlarmsRequest;
 import com.amazonaws.services.cloudwatch.model.DescribeAlarmsResult;
 import com.amazonaws.services.cloudwatch.model.GetDashboardRequest;
+import com.amazonaws.services.cloudwatch.model.ListDashboardsRequest;
+import com.amazonaws.services.cloudwatch.model.ListDashboardsResult;
 import com.amazonaws.services.cloudwatch.model.MetricAlarm;
 import com.amazonaws.services.cloudwatch.model.PutDashboardRequest;
 import com.amazonaws.services.cloudwatch.model.PutDashboardResult;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.cloudwatch.model.DashboardNotFoundErrorException;
 import com.amazonaws.services.lambda.runtime.events.ScheduledEvent;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 
@@ -54,26 +60,55 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 			throw new RuntimeException("Undefined env variable Region, cannot proceed.");
 		}
 
+		//All alarms list in the account
 		List<MetricAlarm> alarms = listAlarms(cwClient);
 
-		Map<String, List<String>> alarmMap = new HashMap<String, List<String>>();
-
+		//All projects in the account
 		Set<String> projects = new HashSet<String>();
 		for (MetricAlarm alarm : alarms) {
 
-			String project = alarm.getAlarmName().split("-")[0].replaceAll("[ %]*", "");
+			String project = getProject(alarm.getAlarmName());
 			projects.add(project);
 		}
 
+		//KeyValue Map: Project->ListOfProjectsAlarms
+		Map<String, List<String>> alarmMap = new HashMap<String, List<String>>();		
 		for (String project : projects) {
 			List<String> alarmList = new ArrayList<String>();
 			for (MetricAlarm alarm : alarms) {
-				String projectId = alarm.getAlarmName().split("-")[0].replaceAll("[ %]*", "");
+				String projectId = getProject(alarm.getAlarmName());
 				if (projectId.equals(project)) {
 					alarmList.add(alarm.getAlarmArn());
 				}
 			}
 			alarmMap.put(project, alarmList);
+		}
+
+		//Set of previous iteration projects
+		HashSet<String> prevProjects = new HashSet<String>();
+		Boolean hasNextToken=true;
+		ListDashboardsRequest listDashboardsRequest = new ListDashboardsRequest();
+
+		do {
+
+			ListDashboardsResult listDashboardsResult = cwClient.listDashboards(listDashboardsRequest);
+			for (DashboardEntry dashboard: listDashboardsResult.getDashboardEntries()){
+				String project = getProject(dashboard.getDashboardName());
+				prevProjects.add(project);
+			}
+			listDashboardsRequest.setNextToken(listDashboardsResult.getNextToken());
+
+			if (listDashboardsRequest.getNextToken() == null){
+				hasNextToken=false;
+			}
+			
+		} while (hasNextToken);
+
+		//calculating negative delta and cleanup if old automated dashboard found based on tags
+		for (String prevProject: prevProjects){
+			if (!projects.contains(prevProject)){				
+					DeleteDashboardsResult deleteDashboardsResult = cwClient.deleteDashboards(new DeleteDashboardsRequest().withDashboardNames(prevProject+"-auto-dashboard"));
+			}
 		}
 
 		for (String project : projects) {
@@ -82,7 +117,7 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 			
 			if (dashboardBody != null){
 
-				logger.log("\nupdating " + project+"-dashboard");
+				logger.log("\nupdating " + project+"-auto-dashboard");
 
 				JSONObject db = new JSONObject(dashboardBody);
 				JSONArray widgets = db.getJSONArray("widgets");
@@ -109,7 +144,7 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 							alarmsArnList.add((String) alarmArn);
 						}
 
-						if(alarmsArnList.size()>100){
+						if(alarmsArnList.size()>=100){
 							logger.log("\nToo many alarms for "+project+". First 100 considered.");
 							continue;
 						}
@@ -133,7 +168,7 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 							else {logger.log("custom widget");
 							continue;}						
 							
-						} catch (Exception e) {
+						} catch (JSONException e) {
 							logger.log("custom widget");
 							continue;
 						}	
@@ -155,12 +190,12 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 					}
 				}
 
-				PutDashboardResult putDashboardResult = cwClient.putDashboard(new PutDashboardRequest().withDashboardName(project+"-dashboard").withDashboardBody(db.toString()));	
+				PutDashboardResult putDashboardResult = cwClient.putDashboard(new PutDashboardRequest().withDashboardName(project+"-auto-dashboard").withDashboardBody(db.toString()));	
 			}	
 
 			else {
 
-				logger.log("\ncreating " + project+"-dashboard");
+				logger.log("\ncreating " + project+"-auto-dashboard");
 
 				JSONObject db = new JSONObject();
 
@@ -177,7 +212,7 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 				properties.put("title","Alarms overview");
 
 				List<String> perProjectAlarmsList = alarmMap.get(project);
-				if (perProjectAlarmsList.size()>100){
+				if (perProjectAlarmsList.size()>=100){
 					logger.log("\nToo many alarms for "+project+ ". First 100 considered.");
 					perProjectAlarmsList=perProjectAlarmsList.subList(0, 100);
 				}
@@ -208,18 +243,36 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 
 				db.put("widgets",widgets);
 
-				PutDashboardResult putDashboardResult = cwClient.putDashboard(new PutDashboardRequest().withDashboardName(project+"-dashboard").withDashboardBody(db.toString()));
-
+				PutDashboardResult putDashboardResult = cwClient.putDashboard(new PutDashboardRequest().withDashboardName(project+"-auto-dashboard").withDashboardBody(db.toString()));
 			}
 		}			
 		return "ok";
 	}
 	
+
+	public String getProject(String fullName){
+
+		//per-component granularity
+
+		// String[] p=fullName.split("-");
+		// String project;
+		// if (p.length<2){
+		// 	project = p[0].replaceAll("[ %]*", ""); 
+		// } else {
+		// 	p[0]=p[0].replaceAll("[ %]*", "");
+		// 	p[1]=p[1].replaceAll("[ %]*", "");
+		// 	project=String.join("-",p[0],p[1]);
+		// }		
+
+		//per-poject granularity
+		return  fullName.split("-")[0].replaceAll("[ %]*", "");
+	}
+
 	public String checkDashboard(String project){
 
 		String dashboardBody;
 		try {
-			dashboardBody = cwClient.getDashboard(new GetDashboardRequest().withDashboardName(project+"-dashboard")).getDashboardBody();
+			dashboardBody = cwClient.getDashboard(new GetDashboardRequest().withDashboardName(project+"-auto-dashboard")).getDashboardBody();
 			
 		} catch (DashboardNotFoundErrorException e) {
 			dashboardBody=null;
@@ -256,33 +309,21 @@ public class UpdateDashboards implements RequestHandler<ScheduledEvent, String> 
 
 	public List<MetricAlarm> listAlarms(AmazonCloudWatch cwClient) {
 
-		DescribeAlarmsRequest describeAlarmsRequest = new DescribeAlarmsRequest();
-		DescribeAlarmsResult describeAlarmsResult = cwClient.describeAlarms(describeAlarmsRequest);
-
 		List<MetricAlarm> alarms = new ArrayList<MetricAlarm>();
-		alarms.addAll(describeAlarmsResult.getMetricAlarms());
+		Boolean hasNextToken=true;
+		DescribeAlarmsRequest describeAlarmsRequest = new DescribeAlarmsRequest();
 
-		try {
-			Thread.sleep(1000);
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}			
+		do {
 
-		while (describeAlarmsResult.getNextToken() != null) {
-
-			DescribeAlarmsRequest describeAlarmsRequestNextToken = new DescribeAlarmsRequest()
-					.withNextToken(describeAlarmsResult.getNextToken());
-			DescribeAlarmsResult response = cwClient.describeAlarms(describeAlarmsRequestNextToken);
-			alarms.addAll(response.getMetricAlarms());
-
-			try {
-				Thread.sleep(1000);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
+			DescribeAlarmsResult response = cwClient.describeAlarms(describeAlarmsRequest);
+			alarms.addAll(response.getMetricAlarms());			
+			describeAlarmsRequest.setNextToken(response.getNextToken());
+			
+			if (describeAlarmsRequest.getNextToken() == null){
+				hasNextToken=false;
 			}
-
-			describeAlarmsResult = response;
-		}
+			
+		} while (hasNextToken);
 
 		return alarms;
 	}
