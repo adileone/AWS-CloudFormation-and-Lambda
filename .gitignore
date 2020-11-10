@@ -1,0 +1,6 @@
+pct-common-monitoring/.classpath
+pct-common-monitoring/.project
+pct-common-monitoring/update.sh
+pct-common-monitoring/.settings/*
+pct-common-monitoring/target/*
+pct-common-monitoring/artifacts/*

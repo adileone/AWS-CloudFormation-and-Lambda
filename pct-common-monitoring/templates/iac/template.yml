@@ -2,6 +2,13 @@ AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: pct-common-lambda-stack
 
+# Mappings:
+#   ToDelete:
+#     test:
+#       ToDelete: "CIS-dashboard,edi-dashboard,epct-dashboard,epctws-dashboard,hcz-dashboard,iap-dashboard,pats-dashboard,sync-dashboard,TargetTracking-dashboard,wdts-dashboard,wipopearl-dashboard"     
+#     prod:
+#       ToDelete: "CIS-dashboard,iap-dashboard,TargetTracking-dashboard,wdts-dashboard,wipopearl-dashboard"
+
 Parameters:
   NamePrefix:
     Type: String
@@ -551,7 +558,7 @@ Resources:
           - Id: GlacierRule
             Status: Enabled
             Transitions:
-              - TransitionInDays: '30'
+              - TransitionInDays: 30
                 StorageClass: GLACIER  
 
   BucketPolicyExportLogsBucket:
@@ -608,8 +615,8 @@ Resources:
           AttributeName: "endpoint"
           KeyType: "HASH"
       ProvisionedThroughput: 
-        ReadCapacityUnits: "5"
-        WriteCapacityUnits: "5"
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
       TableName: "Urls"
 
   ScanEndpointLambdaDevTest:
@@ -733,6 +740,7 @@ Resources:
         DashboardsUpdateSchedule:
           Type: Schedule
           Properties:
+            Enabled: False
             Schedule: 'rate(10 hours)'
             Name: DashboardUpdateSchedule
             Description: schedule for pct-common-updateDashboards Lambda            
@@ -746,4 +754,26 @@ Resources:
       Runtime: java11
       MemorySize: 512
       Timeout: 360
-      Role: !GetAtt LambdaExecutionRole.Arn      
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  # CleanupLambda:
+  #   Type: AWS::Serverless::Function
+  #   Condition: CreateInTestAndProd
+  #   Properties:
+  #     FunctionName: pct-common-cleanup
+  #     CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+  #     Handler: org.wipo.lambda.Cleanup
+  #     Runtime: java11
+  #     MemorySize: 512
+  #     Timeout: 360
+  #     Role: !GetAtt LambdaExecutionRole.Arn
+  #     Environment:
+  #       Variables:
+  #         ToDelete: !FindInMap [ToDelete, !Ref Environment, "ToDelete"] 
+  #     Events:
+  #       CleanupSchedule:
+  #         Type: Schedule
+  #         Properties:
+  #           Schedule: 'cron(50 11 * * ? *)'
+  #           Name: CleanupSchedule
+  #           Description: schedule for pct-common-cleanup Lambda  
