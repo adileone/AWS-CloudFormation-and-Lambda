@@ -1,0 +1,78 @@
+{
+    "widgets":[
+       {
+          "type":"alarm",
+          "x":0,
+          "y":0,
+          "width":24,
+          "height":3,
+          "properties":{
+             "title":"testwid",
+             "alarms":[
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:CIS-Unauthorized Activity Attempt",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:CIS-Security Groups Have Changed",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:wdts-memory-alarm",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:epct-docconverter-web-memory-alarm",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:epct-epctembedded-web-healthyhost-alarm",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:epct-docconverter-web-healthyhost-alarm",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:epct-filingembedded-web-healthyhost-alarm",
+                "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:epct-docvalidator-internal-memory-alarm"
+             ]
+          }
+       },
+       {
+          "type":"metric",
+          "x":0,
+          "y":3,
+          "width":6,
+          "height":6,
+          "properties":{
+             "title":"CIS-IAM Policy Changes",
+             "annotations":{
+                "alarms":[
+                   "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:CIS-IAM Policy Changes"
+                ]
+             },
+             "view":"timeSeries",
+             "stacked":false,
+             "type":"chart"
+          }
+       },
+       {
+          "type":"metric",
+          "x":6,
+          "y":3,
+          "width":6,
+          "height":6,
+          "properties":{
+             "title":"CIS-S3 Bucket Policy Changed",
+             "annotations":{
+                "alarms":[
+                   "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:CIS-S3 Bucket Policy Changed"
+                ]
+             },
+             "view":"timeSeries",
+             "stacked":false,
+             "type":"chart"
+          }
+       },
+       {
+          "type":"metric",
+          "x":12,
+          "y":3,
+          "width":6,
+          "height":6,
+          "properties":{
+             "title":"CIS-Route Tables Have Changed",
+             "annotations":{
+                "alarms":[
+                   "arn:aws:cloudwatch:eu-central-1:770725503646:alarm:CIS-Route Tables Have Changed"
+                ]
+             },
+             "view":"timeSeries",
+             "stacked":false,
+             "type":"chart"
+          }
+       }
+    ]
+ }

@@ -1,8 +1,17 @@
-# Onboarding ManageAlarms-ManageLogEvents (MonitoringLambda) and RestartService
+## Onboarding Monitoring framework
 
-## ManageAlarms
+The monitoring framework is composed by 6 lambda function, and is capable of monitor AWS resources by inspecting logs, performing health-check and automatically reacting with specific remedy actions:
 
-### Service to observe: 
+- **ManageAlarms** lambda: Triggered by CloudWatch Alarms, it sends custom email parsing the alarm's information when it goes off.
+- **ManageLogEvents** lambda: Triggered by CloudWatch Logs filter pattern, it sends email-notification about specific log patterns happening in the service's log groups and allow to directly download logs without accessing the AWS console.
+- **RestartService** lambda: Triggered by CludWatch Alarms based on resources utilization (e.g. memory consumption) it is capable of restarting ECS tasks when the alarm's threshold is met. 
+- **ScanEndpoint** lambda: Inventory function capable of scanning CloudMap registered services to insert the related endpoint into a DynamoDB table for future healthcheck calls.
+- **Healthcheck** lambda: From the DynamoDb table filled by the ScanEndpoint Lambda, this function takes the endpoint to perform healthcheck from an internal standpoint.
+- **ExportLogs** lambda: Scheduled function to archive CloudWatch Logs to S3 first and then to Glacier after 30 days.
+	  	
+### ManageAlarms
+
+#### Service to observe: 
 
 	- ServiceName MUST stick to the naming convention "projectName-*" e.g. (epct-ws-app);
 	- Include in the CloudFormation template: Sender and ListOfRecipients ssm parameter;
@@ -36,7 +45,7 @@
 	
 	- Create all the alarms you need and use the SNSTopic to send events to the lambda;
 	
-### MonitoringLambda:
+#### MonitoringLambda:
 
 	- Attach the new Event to trigger the ManageAlarms Lambda
 
@@ -48,9 +57,9 @@
 	            Fn::ImportValue: "epct-healthyhost-monitoring-topic"
 	 
 	         
-## ManageLogEvents
+### ManageLogEvents
 
-### Service to observe: 
+#### Service to observe: 
 
 	- ServiceName MUST stick to the naming convention "projectName-*" e.g. (epct-ws-app);
 	- Include in the CloudFormation template: Sender and ListOfRecipients ssm parameter;
@@ -81,7 +90,7 @@
 	      LogGroupName: epct-ws/fargate
 	      RetentionInDays: !Ref LogRetentionDays
 	
-### MonitoringLambda:
+#### MonitoringLambda:
 **N.B.** "?Exception ?ERROR" is a default filter. 
 Please refer to this link to identify the best Log pattern to catch: [Filter and pattern syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html#matching-terms-events)
 	
@@ -108,9 +117,9 @@ Please refer to this link to identify the best Log pattern to catch: [Filter and
 	              Ref: EPCTLogGroupName 
 	              
 
-## RestartService
+### RestartService
 
-### Service to observe: 
+#### Service to observe: 
 
 	- ServiceName MUST stick to the naming convention "projectName-*" e.g. (epct-ws-app);
 
@@ -124,7 +133,7 @@ Please refer to this link to identify the best Log pattern to catch: [Filter and
 	    Export: 
 	      Name: "epct-memconsumption-monitoring-topic"   
 	
-### RestartTask:
+#### RestartTask:
 			
 	- Attach the new Event to trigger the ManageLogEvents Lambda
       
@@ -133,4 +142,46 @@ Please refer to this link to identify the best Log pattern to catch: [Filter and
           Type: SNS
           Properties:
             Topic:
-              Fn::ImportValue: "epct-memconsumption-monitoring-topic"               			
+              Fn::ImportValue: "epct-memconsumption-monitoring-topic"
+              
+              
+### ScanEndpoint and HealthCheck
+
+In order to enable healthcheck on a cloudmap endpoint you have to tag the related servicediscovery service with the "uri" and "port" tags:
+
+e.g.
+
+		  EpctComponentDiscoveryService:
+		    Type: AWS::ServiceDiscovery::Service
+		    Properties:
+		      Description: Discovery Service for the ePCT Application
+		      DnsConfig:
+		        RoutingPolicy: MULTIVALUE
+		        DnsRecords:
+		          - TTL: 60
+		            Type: A
+		          - TTL: 60
+		            Type: SRV
+		      HealthCheckCustomConfig:
+		        FailureThreshold: 1
+		      Name: !Ref ServiceName
+		      NamespaceId: !Ref CZPrivateNamespace
+		      Tags: 
+				  - Key: "uri"
+				    Value: "value1"   --> this will be the predefined uri to get the service response, for example "/servlet/health" 
+				  - Key: "port"
+				    Value: "value2"   --> the port to access the service, for example "8080"
+				    
+These functions are scheduled to run once every 4hour for the inventory and every 2 minutes for the healthcheck.
+Under the hood, the ScanEndpoint lambda will associate the pct-common-monitoring vpc with the hosted zone we put the service in. 
+After that it will include the endpoint in a DynamoDb table in order to make the healthcheck lambda take the endpoint from there and do the HTTP requests. 
+
+
+### ExportLogs              
+                             			
+In order to Export service logs from CloudWatch to S3 you have to tag the log group you want to export with the following [Key: "ExportToS3", Value="true"].
+Unfortunately for the moment this can be done through the AWS Command Line (CLI) only: 
+
+e.g.  aws cloudwatch tag-resource --resource-arn "arn:aws:cloudwatch:region:account-id:resource-id" --tags Key=ExportToS2,Value=true
+
+The logs will be then archived to S3 (standard) first and after 30 days they will be moved to GLACIER.

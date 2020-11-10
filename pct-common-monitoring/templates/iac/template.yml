@@ -95,7 +95,7 @@ Resources:
 
   CommonMonitoringVPC:
     Type: AWS::EC2::VPC
-    Condition: CreateInDev    
+    Condition: CreateInDevAndTest    
     Properties:
       CidrBlock:
         Ref: MonitoringCidrBlock
@@ -107,7 +107,7 @@ Resources:
   
   CommonMonitoringSubnet1:
     Type: AWS::EC2::Subnet
-    Condition: CreateInDev    
+    Condition: CreateInDevAndTest    
     Properties: 
       VpcId: !Ref CommonMonitoringVPC
       CidrBlock:
@@ -118,7 +118,7 @@ Resources:
 
   CommonMonitoringSubnet2:
     Type: AWS::EC2::Subnet
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties: 
       VpcId: !Ref CommonMonitoringVPC
       CidrBlock:
@@ -129,7 +129,7 @@ Resources:
 
   MonitoringTransitGWAttachment:
     Type: AWS::EC2::TransitGatewayAttachment
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       VpcId: !Ref CommonMonitoringVPC
       TransitGatewayId: !Ref TransitGatewayId
@@ -142,7 +142,7 @@ Resources:
   
   MonitoringRouteTable:
     Type: AWS::EC2::RouteTable
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       VpcId: !Ref CommonMonitoringVPC
       Tags:
@@ -151,21 +151,21 @@ Resources:
 
   MonitoringPrivateSubnetAssociation1:
     Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       RouteTableId: !Ref MonitoringRouteTable
       SubnetId: !Ref CommonMonitoringSubnet1
 
   MonitoringPrivateSubnetAssociation2:
     Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       RouteTableId: !Ref MonitoringRouteTable
       SubnetId: !Ref CommonMonitoringSubnet2
 
   MonitoringRouteTransitGW:
     Type: AWS::EC2::Route
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     DependsOn: MonitoringTransitGWAttachment
     Properties:
       DestinationCidrBlock: '0.0.0.0/0'
@@ -207,7 +207,7 @@ Resources:
       
   MonitoringSecurityGroup:
     Type: AWS::EC2::SecurityGroup
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       GroupName: "pct-common-monitoring"
       GroupDescription: "monitoring sg"
@@ -239,9 +239,9 @@ Resources:
             StringEquals:
               's3:x-amz-acl': 'bucket-owner-full-control' 
                
-  ManageLogEventsDev:
+  ManageLogEventsDevTest:
     Type: AWS::Serverless::Function
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       FunctionName: pct-common-manageLogEvents
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -314,9 +314,9 @@ Resources:
             LogGroupName:
               Ref: PATSWSLogGroupName
                
-  ManageLogEventsTestProd:
+  ManageLogEventsProd:
     Type: AWS::Serverless::Function
-    Condition: CreateInTestAndProd
+    Condition: CreateInProd
     Properties:
       FunctionName: pct-common-manageLogEvents
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -375,9 +375,9 @@ Resources:
             LogGroupName:
               Ref: WDTSLogGroupNameBiz                          
               
-  ManageAlarmsDev:
+  ManageAlarmsDevTest:
     Type: AWS::Serverless::Function
-    Condition: CreateInDev 
+    Condition: CreateInDevAndTest 
     Properties:
       FunctionName: pct-common-manageAlarms
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -402,26 +402,26 @@ Resources:
           Properties:
             Topic:
               Fn::ImportValue: "cz-memconsumption-monitoring-topic"
-        WSFsxStorageSNS:
-          Type: SNS
-          Properties:
-            Topic:
-              Fn::ImportValue: "worldserver-freestorage-monitoring-topic"
-        WsDbConnectionsSNS:
-          Type: SNS
-          Properties:
-            Topic:
-              Fn::ImportValue: "worldserver-dbconnections-monitoring-topic"              
+#        WSFsxStorageSNS:
+#          Type: SNS
+#          Properties:
+#            Topic:
+#              Fn::ImportValue: "worldserver-freestorage-monitoring-topic"
+#        WsDbConnectionsSNS:
+#          Type: SNS
+#          Properties:
+#            Topic:
+#              Fn::ImportValue: "worldserver-dbconnections-monitoring-topic"              
         EdiProcessingQueueSNS:
           Type: SNS
           Properties:
             Topic:
               Fn::ImportValue: "edi-processing-queue-monitoring-topic"
-        InServiceInstancesSNSTopic:
-          Type: SNS
-          Properties:
-            Topic:
-              Fn::ImportValue: "worldserver-inserviceinstances-monitoring-topic"
+#        InServiceInstancesSNSTopic:
+#          Type: SNS
+#          Properties:
+#            Topic:
+#              Fn::ImportValue: "worldserver-inserviceinstances-monitoring-topic"
         EpctWsAPISNSTopic:
           Type: SNS
           Properties:
@@ -453,9 +453,9 @@ Resources:
             Topic:
               Fn::ImportValue: "wdts-memconsumption-monitoring-topic"
 
-  ManageAlarmsTestProd:
+  ManageAlarmsProd:
     Type: AWS::Serverless::Function
-    Condition: CreateInTestAndProd 
+    Condition: CreateInProd 
     Properties:
       FunctionName: pct-common-manageAlarms
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -491,9 +491,9 @@ Resources:
             Topic:
               Fn::ImportValue: "wdts-memconsumption-monitoring-topic"
                 
-  RestartServiceDev:
+  RestartServiceDevTest:
     Type: AWS::Serverless::Function
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       FunctionName: pct-common-restartService
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -519,9 +519,9 @@ Resources:
             Topic:
               Fn::ImportValue: "cz-memconsumption-monitoring-topic" 
 
-  RestartServiceTestProd:
+  RestartServiceProd:
     Type: AWS::Serverless::Function
-    Condition: CreateInTestAndProd
+    Condition: CreateInProd
     Properties:
       FunctionName: pct-common-restartService
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -612,9 +612,9 @@ Resources:
         WriteCapacityUnits: "5"
       TableName: "Urls"
 
-  ScanEndpointLambdaDev:
+  ScanEndpointLambdaDevTest:
     Type: AWS::Serverless::Function
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       FunctionName: pct-common-scanEndpoint
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -641,9 +641,9 @@ Resources:
             Name: EndpointScanSchedule
             Description: schedule for pct-common-endpointScan Lambda
 
-  ScanEndpointLambdaTestProd:
+  ScanEndpointLambdaProd:
     Type: AWS::Serverless::Function
-    Condition: CreateInTestAndProd
+    Condition: CreateInProd
     Properties:
       FunctionName: pct-common-scanEndpoint
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -664,9 +664,9 @@ Resources:
             Name: EndpointScanSchedule
             Description: schedule for pct-common-endpointScan Lambda            
   
-  HealthcheckLambdaDev:
+  HealthcheckLambdaDevTest:
     Type: AWS::Serverless::Function
-    Condition: CreateInDev
+    Condition: CreateInDevAndTest
     Properties:
       FunctionName: pct-common-healthcheck
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -693,9 +693,9 @@ Resources:
             Name: HealthcheckSchedule
             Description: schedule for pct-common-healthcheck Lambda
 
-  HealthcheckLambdaTestProd:
+  HealthcheckLambdaProd:
     Type: AWS::Serverless::Function
-    Condition: CreateInTestAndProd
+    Condition: CreateInProd
     Properties:
       FunctionName: pct-common-healthcheck
       CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
@@ -715,3 +715,35 @@ Resources:
             Schedule: 'rate(4 hours)'
             Name: HealthcheckSchedule
             Description: schedule for pct-common-healthcheck Lambda
+
+  UpdateDashboardsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-updateDashboards
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.UpdateDashboards
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 720
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          Region: !Ref Region
+      Events:
+        DashboardsUpdateSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(10 hours)'
+            Name: DashboardUpdateSchedule
+            Description: schedule for pct-common-updateDashboards Lambda            
+
+  ResizeClusterLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: pct-common-resizeCluster
+      CodeUri: ../../artifacts/pct-common-lambdas-1.0-SNAPSHOT.jar
+      Handler: org.wipo.lambda.ResizeCluster
+      Runtime: java11
+      MemorySize: 512
+      Timeout: 360
+      Role: !GetAtt LambdaExecutionRole.Arn      

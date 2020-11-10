@@ -1,6 +1,8 @@
 package org.wipo.lambda;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import org.json.JSONArray;
@@ -18,36 +20,57 @@ import com.amazonaws.services.ecs.model.StopTaskRequest;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 
 /**
  * Lambda function to restart ECS tasks Input : SNSEvent payload = ServiceName and ClusterName
  * 
- * @author ansingha, Alessandro Di Leone
+ * @author Alessandro Di Leone
  *
  */
 
-public class RestartService implements RequestHandler<SNSEvent, String> {
+public class RestartService implements RequestHandler<Object, String> {
 
-    @Override
-    public String handleRequest(SNSEvent event, Context context) {
-    	
-		LambdaLogger logger = context.getLogger();
-    	
-        String message = event.getRecords().get(0).getSNS().getMessage();        
-        JSONObject msg = new JSONObject(message);
-		JSONObject trigger = msg.getJSONObject("Trigger");
-		JSONArray dimensions = trigger.getJSONArray("Dimensions");		
-		JSONObject clusterJson = dimensions.getJSONObject(1);
-		JSONObject serviceJson = dimensions.getJSONObject(0);
-		
-		String clusterName=clusterJson.getString("value");
-		String serviceName=serviceJson.getString("value");
-        
+	@SuppressWarnings("unchecked")
+	@Override
+	public String handleRequest(Object event, Context context) {
+
+		LinkedHashMap<String,Object> input =  (LinkedHashMap<String, Object>) event;
+
+		LambdaLogger logger = context.getLogger();	
+		String clusterName;
+		String serviceName;
+
+		if (input.containsKey("Records")) {        
+
+			ArrayList<LinkedHashMap<String,Object> > records = (ArrayList<LinkedHashMap<String,Object> > ) input.get("Records");
+			LinkedHashMap<String,Object> rec0 = (LinkedHashMap<String,Object>) records.get(0);
+			LinkedHashMap<String,Object> sns = (LinkedHashMap<String,Object>) rec0.get("Sns");
+			String message = (String) sns.get("Message");
+
+			JSONObject msg = new JSONObject(message);
+			JSONObject trigger = msg.getJSONObject("Trigger");
+			JSONArray dimensions = trigger.getJSONArray("Dimensions");		
+			JSONObject clusterJson = dimensions.getJSONObject(1);
+			JSONObject serviceJson = dimensions.getJSONObject(0);
+
+			clusterName=clusterJson.getString("value");
+			serviceName=serviceJson.getString("value");
+		} else if (input.containsKey("ClusterName")) {
+			logger.log("Processing event as Map object");
+			clusterName=(String) input.get("ClusterName");
+			serviceName=(String) input.get("ServiceName");
+		} else{
+			throw new RuntimeException("Unsupported Lambda payload type");
+		}
+
 		logger.log("Entering " + this.getClass().getSimpleName() + " handler");
 
 		logger.log("\nStarting restart of "+serviceName+" service in "+clusterName+" cluster");
 
+		return restartService(clusterName, serviceName, logger);
+	}
+
+	protected String restartService(String clusterName, String serviceName, LambdaLogger logger) {
 		try {
 			AmazonECS client = AmazonECSClientBuilder.standard().build();
 
@@ -79,7 +102,7 @@ public class RestartService implements RequestHandler<SNSEvent, String> {
 		DescribeServicesResult result = client.describeServices(request);
 		return result.getServices().get(0);
 	}
-	
+
 	private List<String> getTasksArns(String cluster, String service, AmazonECS client, DesiredStatus desiredStatus) {
 		ListTasksRequest tasksRequest = new ListTasksRequest();
 		tasksRequest.setCluster(cluster);
@@ -90,7 +113,7 @@ public class RestartService implements RequestHandler<SNSEvent, String> {
 		tasksResult = client.listTasks(tasksRequest);
 		return tasksResult.getTaskArns();
 	}
-	
+
 	/*private RunTaskResult runTasks(LambdaLogger logger, String cluster, AmazonECS client, Service service,
 			Integer count) {
 		logger.log("\nSTARTING task..");
